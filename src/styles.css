@@ -206,3 +206,18 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 @media (max-width: 700px) {
   .brief { display: none; }
 }
+
+/* PRD import */
+.import-row { display: flex; gap: 8px; align-items: center; }
+.import-row input[type="text"], .import-row > input {
+  flex: 1; min-width: 0; height: 36px; padding: 0 12px; border-radius: var(--r-input); border: 1px solid var(--border); background: #fff; outline: none;
+}
+.import-row > input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(1, 106, 113, 0.12); }
+.file-btn { display: inline-flex; align-items: center; position: relative; overflow: hidden; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.file-btn.disabled { opacity: 0.45; pointer-events: none; }
+.import-status { margin: 0; color: var(--icon); display: flex; gap: 8px; align-items: center; }
+.import-status.error { color: #8a2b1d; }
+.mic-error { margin: 6px 0 0; font-size: 12px; color: #8a2b1d; }
+.icon-btn.mic.on { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.55; } }

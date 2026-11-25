@@ -1,9 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { GENERATE_SYSTEM, SUGGEST_SYSTEM } from "./prompts.js";
+import { BRIEF_SYSTEM, GENERATE_SYSTEM, SUGGEST_SYSTEM } from "./prompts.js";
 import type {
   ApiError,
   GenerateRequest,
   GenerateResponse,
+  ImportRequest,
+  ImportResponse,
   SuggestRequest,
   SuggestResponse,
   Usage,
@@ -173,6 +175,55 @@ export async function generate(req: GenerateRequest): Promise<GenerateResponse> 
   });
   const msg = await stream.finalMessage();
   const out = jsonText(msg) as Omit<GenerateResponse, "usage">;
+  return { ...out, usage: usageOf(msg) };
+}
+
+const briefSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title", "brief"],
+  properties: { title: { type: "string" }, brief: { type: "string" } },
+};
+
+const MAX_DOC_CHARS = 200_000;
+
+/** Reads a Google Doc that is shared "Anyone with the link" as plain text. */
+async function fetchGoogleDoc(url: string): Promise<string> {
+  const id = url.match(/\/document\/(?:u\/\d+\/)?d\/([a-zA-Z0-9_-]{20,})/)?.[1];
+  if (!id) {
+    throw new HttpError(400, { error: "That doesn't look like a Google Docs link.", code: "bad_request" });
+  }
+  const notShared =
+    "I couldn't open that doc. In Google Docs, tap Share, set General access to “Anyone with the link” (Viewer), then try again. Or paste the text instead.";
+  let res: Response;
+  try {
+    res = await fetch(`https://docs.google.com/document/d/${id}/export?format=txt`, { redirect: "follow" });
+  } catch {
+    throw new HttpError(502, { error: "Couldn't reach Google Docs. Try again in a moment.", code: "upstream" });
+  }
+  // A private doc redirects to a sign-in page, which comes back as HTML.
+  if (!res.ok || (res.headers.get("content-type") ?? "").includes("text/html")) {
+    throw new HttpError(403, { error: notShared, code: "bad_request" });
+  }
+  return (await res.text()).replace(/^\uFEFF/, "");
+}
+
+export async function importBrief(req: ImportRequest): Promise<ImportResponse> {
+  let text = req.kind === "gdoc" ? await fetchGoogleDoc(req.url) : req.text;
+  text = (text ?? "").trim();
+  if (text.length < 40) {
+    throw new HttpError(400, { error: "That document is empty or too short to use.", code: "bad_request" });
+  }
+  if (text.length > MAX_DOC_CHARS) text = text.slice(0, MAX_DOC_CHARS);
+  const msg = await client().beta.messages.create({
+    model: MODEL,
+    max_tokens: 4000,
+    system: BRIEF_SYSTEM,
+    output_config: { effort: "low", format: { type: "json_schema", schema: briefSchema } },
+    messages: [{ role: "user", content: `<document>\n${text}\n</document>` }],
+    ...FALLBACK,
+  });
+  const out = jsonText(msg) as Omit<ImportResponse, "usage">;
   return { ...out, usage: usageOf(msg) };
 }
 

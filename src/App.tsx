@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { importPrd } from "./api";
 import { Canvas, type Tool } from "./canvas/Canvas";
 import { frameHtml } from "./runtime/frameHtml";
 import { DEVICES, getState, redo, set, setBrief, undo, useStore, type DeviceId } from "./store";
@@ -216,8 +217,37 @@ function Preview({ id, onClose }: { id: string; onClose: () => void }) {
   );
 }
 
+const GDOC = /docs\.google\.com\/document\//;
+
 function BriefDialog(props: { initial: string; onSave: (b: string) => void; onCancel?: () => void }) {
   const [text, setText] = useState(props.initial);
+  const [source, setSource] = useState("");
+  const [status, setStatus] = useState<{ busy?: boolean; msg?: string; error?: boolean }>({});
+
+  const runImport = async (req: Parameters<typeof importPrd>[0], label: string) => {
+    setStatus({ busy: true, msg: `Reading ${label}…` });
+    try {
+      const out = await importPrd(req);
+      setText(out.brief);
+      setSource("");
+      setStatus({ msg: `Brief written from “${out.title}”. Edit it if anything's off.` });
+    } catch (e) {
+      setStatus({ msg: (e as Error).message, error: true });
+    }
+  };
+
+  const importSource = () => {
+    const v = source.trim();
+    if (!v) return;
+    if (GDOC.test(v)) runImport({ kind: "gdoc", url: v }, "the Google Doc");
+    else runImport({ kind: "text", text: v }, "the PRD");
+  };
+
+  const importFile = async (file: File) => {
+    if (file.size > 2_000_000) return setStatus({ msg: "That file is over 2 MB. Paste the text instead.", error: true });
+    runImport({ kind: "text", text: await file.text(), name: file.name }, file.name);
+  };
+
   return (
     <div className="modal-scrim" data-ui>
       <form
@@ -229,18 +259,55 @@ function BriefDialog(props: { initial: string; onSave: (b: string) => void; onCa
       >
         <h2>What are you building?</h2>
         <p className="muted">
-          A sentence or two is enough. Every suggestion and screen uses this as context. Example: “A habit tracker for
-          runners, mobile first, with streaks and a weekly summary.”
+          A sentence or two is enough, or import a PRD and I'll write the brief from it. Every suggestion and screen uses
+          this as context.
         </p>
-        <textarea autoFocus rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="Describe the product…" />
+        <div className="import-row">
+          <input
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            placeholder="Google Docs link, or paste PRD text"
+            aria-label="Google Docs link or PRD text"
+            disabled={status.busy}
+          />
+          <button type="button" className="btn" onClick={importSource} disabled={status.busy || !source.trim()}>
+            Import
+          </button>
+          <label className={`btn ghost file-btn ${status.busy ? "disabled" : ""}`}>
+            File
+            <input
+              type="file"
+              accept=".md,.markdown,.txt,text/plain,text/markdown"
+              disabled={status.busy}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) importFile(f);
+              }}
+            />
+          </label>
+        </div>
+        {status.msg && (
+          <p className={`small import-status ${status.error ? "error" : ""}`}>
+            {status.busy && <span className="spinner" />} {status.msg}
+          </p>
+        )}
+        <textarea
+          autoFocus
+          rows={6}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Example: A habit tracker for runners, mobile first, with streaks and a weekly summary."
+          aria-label="Project brief"
+        />
         <div className="modal-actions">
           {props.onCancel && (
             <button type="button" className="btn ghost" onClick={props.onCancel}>
               Cancel
             </button>
           )}
-          <button className="btn ink" disabled={!text.trim()}>
-            Start designing
+          <button className="btn ink" disabled={!text.trim() || status.busy}>
+            {props.initial ? "Save brief" : "Start designing"}
           </button>
         </div>
       </form>
