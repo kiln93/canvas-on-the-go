@@ -1,0 +1,6 @@
+{
+  "functions": {
+    "api/generate.ts": { "maxDuration": 300 },
+    "api/suggest.ts": { "maxDuration": 60 }
+  }
+}

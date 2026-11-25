@@ -1,0 +1,31 @@
+{
+  "name": "canvas-on-the-go",
+  "description": "Sketch UI with Apple Pencil, get live React frames.",
+  "scripts": {
+    "predev": "node scripts/copy-runtime.mjs",
+    "dev": "vite --host",
+    "prebuild": "node scripts/copy-runtime.mjs",
+    "build": "tsc --noEmit -p . && vite build",
+    "preview": "vite preview --host",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
+    "@babel/standalone": "^7.29.15",
+    "@tailwindcss/browser": "^4.3.5",
+    "perfect-freehand": "^1.2.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.10",
+    "@types/react": "^18.3.32",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "^7.0.2",
+    "vite": "^6.4.6"
+  },
+  "private": true,
+  "type": "module"
+}
