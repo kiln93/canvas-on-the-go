@@ -38,3 +38,9 @@ export type GenerateResponse = { title: string; code: string; summary: string; u
 export type Usage = { input_tokens: number; output_tokens: number; cost: number };
 
 export type ApiError = { error: string; code?: "no_key" | "refusal" | "bad_request" | "upstream" };
+
+export type ImportRequest =
+  | { kind: "gdoc"; url: string }
+  | { kind: "text"; text: string; name?: string };
+
+export type ImportResponse = { title: string; brief: string; usage: Usage };

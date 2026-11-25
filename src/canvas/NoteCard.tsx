@@ -122,8 +122,34 @@ type Recognition = {
   start(): void;
   stop(): void;
   onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onerror: ((e: { error: string }) => void) | null;
   onend: (() => void) | null;
 };
+
+// iPadOS Safari's recognizer is unreliable in continuous mode: it often stops at once or never
+// returns results. One utterance per tap works; each tap appends to what's already typed.
+const IS_APPLE_TOUCH = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+const STANDALONE = window.matchMedia?.("(display-mode: standalone)").matches;
+
+function micError(code: string): string {
+  switch (code) {
+    case "not-allowed":
+    case "service-not-allowed":
+      return STANDALONE
+        ? "Dictation doesn't work when the app is opened from the Home Screen. Open it in Safari, or use the mic key on the keyboard."
+        : "The mic is blocked. Allow microphone access for this site in Safari and turn on Dictation (Settings › General › Keyboard), or use the keyboard's mic key.";
+    case "no-speech":
+      return "I didn't hear anything. Tap the mic and speak again.";
+    case "audio-capture":
+      return "No microphone was found.";
+    case "network":
+      return "Dictation needs an internet connection.";
+    case "aborted":
+      return "";
+    default:
+      return `Dictation stopped (${code}). You can use the mic key on the keyboard instead.`;
+  }
+}
 const SpeechRecognitionCtor: (new () => Recognition) | undefined =
   (window as unknown as { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition })
     .SpeechRecognition ??
@@ -132,44 +158,70 @@ const SpeechRecognitionCtor: (new () => Recognition) | undefined =
 function AddNote({ onAdd }: { onAdd: (text: string) => void }) {
   const [text, setText] = useState("");
   const [listening, setListening] = useState(false);
+  const [error, setError] = useState("");
   const rec = useRef<Recognition | null>(null);
 
   const toggleMic = () => {
     if (!SpeechRecognitionCtor) return;
     if (listening) return rec.current?.stop();
+    setError("");
     const r = new SpeechRecognitionCtor();
     r.lang = navigator.language || "en-US";
     r.interimResults = true;
-    r.continuous = true;
+    r.continuous = !IS_APPLE_TOUCH;
+    const before = text.trim() ? text.trim() + " " : "";
+    let heard = false;
     r.onresult = (e) => {
+      heard = true;
       const said = Array.from(e.results)
         .map((res) => res[0].transcript)
-        .join(" ");
-      setText(said);
+        .join("");
+      setText(before + said.trim());
     };
-    r.onend = () => setListening(false);
+    r.onerror = (e) => setError(micError(e.error));
+    r.onend = () => {
+      setListening(false);
+      if (!heard) setError((cur) => cur || micError("no-speech"));
+    };
     rec.current = r;
-    r.start();
-    setListening(true);
+    try {
+      r.start(); // must run inside the tap, or Safari refuses
+      setListening(true);
+    } catch (e) {
+      setError(micError((e as Error).name === "NotAllowedError" ? "not-allowed" : "other"));
+    }
   };
 
   return (
-    <form
-      className="add-note"
-      onSubmit={(e) => {
-        e.preventDefault();
-        rec.current?.stop();
-        if (text.trim()) onAdd(text.trim());
-        setText("");
-      }}
-    >
-      <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Write or say a note…" />
-      {SpeechRecognitionCtor && (
-        <button type="button" className={`icon-btn mic ${listening ? "on" : ""}`} onClick={toggleMic} aria-label={listening ? "Stop dictation" : "Dictate a note"}>
-          {listening ? "■" : <MicIcon />}
-        </button>
-      )}
-    </form>
+    <>
+      <form
+        className="add-note"
+        onSubmit={(e) => {
+          e.preventDefault();
+          rec.current?.stop();
+          if (text.trim()) onAdd(text.trim());
+          setText("");
+        }}
+      >
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={listening ? "Listening…" : "Write or say a note…"}
+          enterKeyHint="done"
+        />
+        {SpeechRecognitionCtor && (
+          <button
+            type="button"
+            className={`icon-btn mic ${listening ? "on" : ""}`}
+            onClick={toggleMic}
+            aria-label={listening ? "Stop dictation" : "Dictate a note"}
+          >
+            {listening ? "■" : <MicIcon />}
+          </button>
+        )}
+      </form>
+      {error && <p className="mic-error">{error}</p>}
+    </>
   );
 }
 

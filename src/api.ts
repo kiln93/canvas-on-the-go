@@ -2,6 +2,8 @@ import type {
   ApiError,
   GenerateRequest,
   GenerateResponse,
+  ImportRequest,
+  ImportResponse,
   SuggestRequest,
   SuggestResponse,
 } from "../server/types";
@@ -119,4 +121,11 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
   } catch (e) {
     updateFrame(id, { busy: undefined, error: (e as Error).message });
   }
+}
+
+/** Condenses a PRD (a shared Google Doc link or pasted text) into a project brief. */
+export async function importPrd(req: ImportRequest): Promise<ImportResponse> {
+  const out = await post<ImportResponse>("/api/import", req);
+  addSpend(out.usage);
+  return out;
 }

@@ -41,3 +41,15 @@ Rules:
 - If an image of markups is given with previousCode, red or dark strokes are change requests drawn over the current screen: arrows mean move, crossing out means remove, circles mean "this one", and handwriting says what to do.
 - Respect the device: phones get a 16px side gutter, a top bar and thumb-reachable actions; desktops get wider layouts.
 - summary is one sentence on what you built or changed. title is a 1 to 4 word name for the screen.`;
+
+export const BRIEF_SYSTEM = `You condense a product requirements document (PRD) into a project brief for a designer's sketching canvas.
+The brief is read before every sketch is interpreted and every screen is generated, so it must carry what shapes the UI.
+
+Write at most 250 words of plain prose and short lists covering, when the document says them:
+- what the product is and who it's for
+- the main screens and flows
+- key data and content each screen shows
+- platform (mobile, tablet, web) and constraints
+- tone and anything explicitly ruled out
+Skip business goals, timelines, metrics and process unless they change the interface. Never invent facts the document doesn't state.
+title is the product's name from the document, or a 1 to 4 word description if it has none.`;
