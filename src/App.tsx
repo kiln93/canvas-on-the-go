@@ -40,6 +40,7 @@ export function App() {
   return (
     <div className="app">
       <TopBar onEditBrief={() => setEditingBrief(true)} />
+      <KeyBanner />
       <Canvas tool={tool} device={device} onPlay={setPlaying} />
       <Toolbar tool={tool} setTool={setTool} device={device} setDevice={setDevice} />
       {playing && <Preview id={playing} onClose={() => setPlaying(null)} />}
@@ -54,6 +55,24 @@ export function App() {
           onCancel={brief ? () => setEditingBrief(false) : undefined}
         />
       )}
+    </div>
+  );
+}
+
+// Asks the server once whether it has an API key, so a missing key shows up front instead of on every frame.
+function KeyBanner() {
+  const [missing, setMissing] = useState(false);
+  useEffect(() => {
+    fetch("/api/health", { method: "POST" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { hasKey?: boolean } | null) => setMissing(d?.hasKey === false))
+      .catch(() => {});
+  }, []);
+  if (!missing) return null;
+  return (
+    <div className="key-banner" data-ui>
+      The server has no Anthropic API key. In Vercel, open this project's Settings, then Environment Variables, and add{" "}
+      <code>ANTHROPIC_API_KEY</code> with Production ticked. Then redeploy the Production deployment.
     </div>
   );
 }

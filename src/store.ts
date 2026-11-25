@@ -64,8 +64,11 @@ function load(): State {
     const raw = localStorage.getItem(KEY);
     if (!raw) return empty;
     const saved = JSON.parse(raw) as State;
-    // Busy flags never survive a reload.
-    saved.project.frames.forEach((f) => (f.busy = undefined));
+    // Busy flags and errors never survive a reload: an old error would hide that a fix worked.
+    saved.project.frames.forEach((f) => {
+      f.busy = undefined;
+      f.error = undefined;
+    });
     if (saved.project.spend.month !== month()) saved.project.spend = { month: month(), cost: 0 };
     return { ...empty, ...saved, selectedId: null };
   } catch {

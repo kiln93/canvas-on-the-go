@@ -146,6 +146,13 @@ input, textarea { -webkit-user-select: text; user-select: text; }
   padding-top: env(safe-area-inset-top); display: flex; align-items: center; gap: 16px;
   background: rgba(250, 248, 245, 0.94); border-bottom: 1px solid var(--border);
 }
+.key-banner {
+  position: absolute; z-index: 11; left: 50%; transform: translateX(-50%);
+  top: calc(60px + env(safe-area-inset-top)); width: min(560px, calc(100% - 32px)); padding: 12px 16px;
+  background: var(--surface); border: 1px solid var(--markup); border-radius: var(--r-card);
+  color: var(--ink); font-size: 14px; line-height: 1.45;
+}
+.key-banner code { font-size: 12px; background: #f0ede7; padding: 1px 4px; border-radius: 4px; }
 .crumbs { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .crumb { background: none; border: 0; padding: 4px 6px; border-radius: var(--r-btn); color: var(--icon); font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
 .crumb.active { color: var(--ink); }
