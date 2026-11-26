@@ -23,31 +23,27 @@ import { NoteCard } from "./NoteCard";
 import { NoteComposer, NoteTargetBox, type NoteTarget } from "./NoteComposer";
 import { primeKeyboard } from "./keyboard";
 import { pickInFrame } from "./pick";
-import { runGenerate, runSuggest } from "../api";
+import { COST_ESTIMATE, dollars, runGenerate, runSuggest } from "../api";
 
-export type Tool = "select" | "pen" | "eraser" | "frame";
+/** Drawing tools, used only in the drawing view. The canvas itself only moves and opens screens. */
+export type Tool = "pen" | "eraser";
 type Camera = { x: number; y: number; z: number };
 
 const cameras = new Map<string, Camera>(); // remembered per canvas (overview or a surface)
 const HOLD_MS = 500; // press and hold the pen this long, without moving, to leave a note
-const NEAR = 160; // world px: a stroke that starts this close to a frame still belongs to it
+const MOVE_HOLD_MS = 450; // on the canvas, hold a frame this long to pick it up and move it
+const TAP_SLOP = 8; // screen px a tap may wander and still count as a tap
 
 type Gesture =
-  // frameId "" is a loose stroke on empty canvas (world coordinates); a frame is made around it.
   | { type: "draw"; frameId: string; points: Point[]; kind: Stroke["kind"]; sx: number; sy: number; t0: number }
   | { type: "erase"; touched: boolean }
-  | { type: "frame"; x0: number; y0: number; x1: number; y1: number }
   | { type: "move"; frameId: string; dx: number; dy: number; moved: boolean }
   | { type: "pan"; sx: number; sy: number; cam: Camera }
   | { type: "pinch"; d0: number; mid0: { x: number; y: number }; cam: Camera }
   | null;
 
-export function Canvas(props: {
-  tool: Tool;
-  device: DeviceId;
-  onPlay: (id: string) => void;
-}) {
-  const { tool, device } = props;
+export function Canvas(props: { tool: Tool; onPlay: (id: string) => void }) {
+  const { tool } = props;
   const surfaceId = useStore((s) => s.surfaceId);
   const allFrames = useStore((s) => s.project.frames);
   const focusId = useStore((s) => s.focusId);
@@ -65,6 +61,9 @@ export function Canvas(props: {
   const gesture = useRef<Gesture>(null);
   const pointers = useRef(new Map<number, { x: number; y: number; type: string }>());
   const touchTap = useRef<{ t: number; max: number; moved: boolean } | null>(null);
+  // A press on the canvas (not the drawing view): a tap selects, a drag pans, a hold on a frame picks it up.
+  const press = useRef<{ t: number; x: number; y: number; moved: boolean; hitId: string | null } | null>(null);
+  const moveTimer = useRef<ReturnType<typeof setTimeout>>();
   const lastTap = useRef<{ t: number; id: string | null }>({ t: 0, id: null });
   const [live, setLive] = useState<Gesture>(null);
   const [noteTarget, setNoteTarget] = useState<NoteTarget | null>(null);
@@ -154,11 +153,24 @@ export function Canvas(props: {
       const f = getState().project.frames.find((x) => x.id === (e as CustomEvent<string>).detail);
       if (f) enterFocus(f);
     };
+    // "New screen": a frame for the chosen device beside the others, opened straight in the drawing view.
+    const newScreen = (e: Event) => {
+      const device = (e as CustomEvent<DeviceId>).detail;
+      const spec = DEVICES[device];
+      const sid = getState().surfaceId;
+      const fs = framesOn(getState().project.frames, sid);
+      const x = fs.length ? Math.max(...fs.map((f) => f.x + f.w)) + 400 : 0;
+      const y = fs.length ? Math.min(...fs.map((f) => f.y)) : 0;
+      const f = addFrame({ name: "", device, x, y, w: spec.w, h: spec.h, surfaceId: sid ?? undefined });
+      enterFocus(f);
+    };
     window.addEventListener("cotg:fit-all", fit);
     window.addEventListener("cotg:focus", focus);
+    window.addEventListener("cotg:new-screen", newScreen);
     return () => {
       window.removeEventListener("cotg:fit-all", fit);
       window.removeEventListener("cotg:focus", focus);
+      window.removeEventListener("cotg:new-screen", newScreen);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -218,9 +230,9 @@ export function Canvas(props: {
     if (e.pointerType === "pen") penSeen.current = true;
     const isTouch = e.pointerType === "touch";
     // Palm rejection: while the Pencil is drawing, ignore touches.
-    const busyPen = gesture.current && ["draw", "erase", "frame", "move"].includes(gesture.current.type);
+    const busyPen = gesture.current && ["draw", "erase", "move"].includes(gesture.current.type);
     if (isTouch && busyPen && penSeen.current) return;
-    // No Pencil (a phone): a second finger turns a finger stroke into a pinch.
+    // A second finger turns a one-finger stroke or move into a pinch.
     if (isTouch && busyPen) {
       cancelHold();
       gesture.current = null;
@@ -228,54 +240,68 @@ export function Canvas(props: {
     }
     rootRef.current!.setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
-    const touchCount = [...pointers.current.values()].filter((p) => p.type === "touch").length;
-    const fingerTool = isTouch && !penSeen.current && touchCount === 1 && tool !== "select";
-    const isPan =
-      (isTouch && !fingerTool) || e.button === 1 || (e.pointerType === "mouse" && e.button === 0 && spaceDown.current);
-
-    if (isPan) {
-      const touches = [...pointers.current.values()].filter((p) => p.type === "touch");
-      if (isTouch) {
-        if (touches.length === 1) touchTap.current = { t: Date.now(), max: 1, moved: false };
-        else if (touchTap.current) touchTap.current.max = Math.max(touchTap.current.max, touches.length);
-      }
-      if (touches.length >= 2) {
-        const [a, b] = touches;
-        gesture.current = {
-          type: "pinch",
-          d0: Math.hypot(a.x - b.x, a.y - b.y),
-          mid0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
-          cam: camRef.current,
-        };
-      } else gesture.current = { type: "pan", sx: e.clientX, sy: e.clientY, cam: camRef.current };
+    const touches = [...pointers.current.values()].filter((p) => p.type === "touch");
+    if (isTouch) {
+      if (touches.length === 1) touchTap.current = { t: Date.now(), max: 1, moved: false };
+      else if (touchTap.current) touchTap.current.max = Math.max(touchTap.current.max, touches.length);
+    }
+    if (touches.length >= 2) {
+      clearTimeout(moveTimer.current);
+      press.current = null;
+      const [a, b] = touches;
+      gesture.current = {
+        type: "pinch",
+        d0: Math.hypot(a.x - b.x, a.y - b.y),
+        mid0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+        cam: camRef.current,
+      };
       return;
     }
-    if (e.button !== 0) return;
+    if (e.pointerType === "mouse" && e.button !== 0) {
+      gesture.current = { type: "pan", sx: e.clientX, sy: e.clientY, cam: camRef.current };
+      return;
+    }
     const w = toWorld(e.clientX, e.clientY);
     const hit = frameAt(w.x, w.y);
 
+    // The canvas never draws: any finger, Pencil or mouse pans it, a tap selects, a hold on a frame moves it.
+    if (!focusId) {
+      gesture.current = { type: "pan", sx: e.clientX, sy: e.clientY, cam: camRef.current };
+      press.current = { t: Date.now(), x: e.clientX, y: e.clientY, moved: false, hitId: hit?.id ?? null };
+      clearTimeout(moveTimer.current);
+      if (hit) {
+        moveTimer.current = setTimeout(() => {
+          if (!press.current || press.current.moved || gesture.current?.type !== "pan") return;
+          press.current = null;
+          set({ selectedId: hit.id });
+          gesture.current = { type: "move", frameId: hit.id, dx: w.x - hit.x, dy: w.y - hit.y, moved: false };
+          setLive(gesture.current);
+        }, MOVE_HOLD_MS);
+      }
+      return;
+    }
+
+    // The drawing view: the Pencil (and a mouse) always draws. Fingers draw too until a Pencil has been
+    // used; after that a finger scrolls, so a resting palm never leaves marks.
+    if (isTouch && penSeen.current) {
+      gesture.current = { type: "pan", sx: e.clientX, sy: e.clientY, cam: camRef.current };
+      return;
+    }
+    const owner = frames[0];
+    if (!owner) return;
     if (tool === "pen") {
       setNoteTarget(null);
-      // Draw freely: a stroke near a frame belongs to it, even past its edge; on empty canvas it starts a new frame.
-      const owner =
-        hit ??
-        (focusId ? frames[0] : undefined) ?? // in the focused view every stroke belongs to that frame
-        frames.find(
-          (f) => w.x > f.x - NEAR && w.x < f.x + f.w + NEAR && w.y > f.y - NEAR && w.y < f.y + f.h + NEAR,
-        );
-      const kind = owner?.code ? "markup" : "sketch";
-      const origin = owner ?? { x: 0, y: 0 };
+      const kind = owner.code ? "markup" : "sketch";
       gesture.current = {
         type: "draw",
-        frameId: owner?.id ?? "",
+        frameId: owner.id,
         kind,
-        points: [[w.x - origin.x, w.y - origin.y, e.pressure]],
+        points: [[w.x - owner.x, w.y - owner.y, e.pressure]],
         sx: e.clientX,
         sy: e.clientY,
         t0: Date.now(),
       };
-      if (owner) set({ selectedId: owner.id });
-      // Press and hold on a frame to leave a note there instead of drawing.
+      // Press and hold on the screen to leave a note there instead of drawing.
       if (hit) {
         clearTimeout(holdTimer.current);
         setPressAt({ x: w.x, y: w.y });
@@ -289,26 +315,9 @@ export function Canvas(props: {
           startNote(hit, w.x - hit.x, w.y - hit.y);
         }, HOLD_MS);
       }
-    } else if (tool === "eraser") {
+    } else {
       gesture.current = { type: "erase", touched: false };
       eraseAt(w.x, w.y);
-    } else if (tool === "frame") {
-      gesture.current = { type: "frame", x0: w.x, y0: w.y, x1: w.x, y1: w.y };
-    } else {
-      if (!hit) {
-        set({ selectedId: null });
-        gesture.current = { type: "pan", sx: e.clientX, sy: e.clientY, cam: camRef.current };
-        return;
-      }
-      const now = Date.now();
-      if (lastTap.current.id === hit.id && now - lastTap.current.t < 350 && hit.primary && !surfaceId) {
-        set({ surfaceId: hit.surfaceId, selectedId: hit.id });
-        gesture.current = null;
-        return;
-      }
-      lastTap.current = { t: now, id: hit.id };
-      set({ selectedId: hit.id });
-      gesture.current = { type: "move", frameId: hit.id, dx: w.x - hit.x, dy: w.y - hit.y, moved: false };
     }
     setLive(gesture.current);
   }
@@ -353,7 +362,12 @@ export function Canvas(props: {
       return;
     }
     if (g.type === "pan") {
-      if (Math.hypot(e.clientX - g.sx, e.clientY - g.sy) > 6 && touchTap.current) touchTap.current.moved = true;
+      const far = Math.hypot(e.clientX - g.sx, e.clientY - g.sy) > TAP_SLOP;
+      if (far && touchTap.current) touchTap.current.moved = true;
+      if (far && press.current) {
+        press.current.moved = true;
+        clearTimeout(moveTimer.current);
+      }
       setCam({ ...g.cam, x: g.cam.x + e.clientX - g.sx, y: g.cam.y + e.clientY - g.sy });
       return;
     }
@@ -368,11 +382,7 @@ export function Canvas(props: {
       }
       setLive({ ...g });
     } else if (g.type === "erase") eraseAt(w.x, w.y);
-    else if (g.type === "frame") {
-      g.x1 = w.x;
-      g.y1 = w.y;
-      setLive({ ...g });
-    } else if (g.type === "move") {
+    else if (g.type === "move") {
       const f = frames.find((x) => x.id === g.frameId);
       if (!f) return;
       const nx = w.x - g.dx;
@@ -403,12 +413,19 @@ export function Canvas(props: {
       if (!t.moved && Date.now() - t.t < 350) {
         if (t.max === 2) undo();
         else if (t.max === 3) redo();
-        else if (t.max === 1 && g?.type === "pan") {
-          const w = toWorld(e.clientX, e.clientY);
-          const hit = frameAt(w.x, w.y);
-          set({ selectedId: hit?.id ?? null });
-        }
       }
+    }
+    // A tap on the canvas selects a frame (or clears the selection); a double tap opens a surface.
+    clearTimeout(moveTimer.current);
+    const pr = press.current;
+    press.current = null;
+    if (pr && !pr.moved && pointers.current.size === 0 && Date.now() - pr.t < MOVE_HOLD_MS) {
+      const now = Date.now();
+      const hit = pr.hitId ? frames.find((f) => f.id === pr.hitId) : undefined;
+      if (hit && lastTap.current.id === hit.id && now - lastTap.current.t < 350 && hit.primary && !surfaceId) {
+        set({ surfaceId: hit.surfaceId, selectedId: hit.id });
+      } else set({ selectedId: hit?.id ?? null });
+      lastTap.current = { t: now, id: hit?.id ?? null };
     }
     if (g?.type === "pinch" && remainingTouches === 1) {
       const [p] = [...pointers.current.values()];
@@ -419,53 +436,11 @@ export function Canvas(props: {
 
     cancelHold();
     if (g?.type === "draw" && g.points.length > 1) {
-      if (g.frameId) {
-        const stroke: Stroke = { id: uid(), points: g.points, kind: g.kind };
-        updateFrame(g.frameId, (f) => ({ strokes: [...f.strokes, stroke] }), true);
-      } else frameAroundStroke(g.points);
-    } else if (g?.type === "frame") {
-      createFrame(g);
+      const stroke: Stroke = { id: uid(), points: g.points, kind: g.kind };
+      updateFrame(g.frameId, (f) => ({ strokes: [...f.strokes, stroke] }), true);
     }
     gesture.current = null;
     setLive(null);
-  }
-
-  /** A stroke drawn on empty canvas gets a new frame of the chosen device, placed around where it started. */
-  function frameAroundStroke(points: Point[]) {
-    const spec = DEVICES[device];
-    const [sx, sy] = points[0];
-    const f = addFrame({ name: "", device, x: sx - 48, y: sy - 48, w: spec.w, h: spec.h, surfaceId: surfaceId ?? undefined });
-    const stroke: Stroke = { id: uid(), points: points.map(([x, y, p]) => [x - f.x, y - f.y, p]), kind: "sketch" };
-    updateFrame(f.id, { strokes: [stroke] });
-    set({ selectedId: f.id });
-  }
-
-  function createFrame(g: Extract<Gesture, { type: "frame" }>) {
-    const w = Math.abs(g.x1 - g.x0);
-    const h = Math.abs(g.y1 - g.y0);
-    // Snap the rough rectangle to the closest device by shape; a tap uses the chosen device.
-    let d: DeviceId = device;
-    if (w > 40 && h > 40) {
-      const ratio = h / w;
-      d = (Object.keys(DEVICES) as DeviceId[]).reduce((best, k) =>
-        Math.abs(Math.log(DEVICES[k].h / DEVICES[k].w / ratio)) <
-        Math.abs(Math.log(DEVICES[best].h / DEVICES[best].w / ratio))
-          ? k
-          : best,
-      );
-    }
-    const spec = DEVICES[d];
-    const f = addFrame({
-      name: "",
-      device: d,
-      x: Math.min(g.x0, g.x1),
-      y: Math.min(g.y0, g.y1),
-      w: spec.w,
-      h: spec.h,
-      surfaceId: surfaceId ?? undefined,
-    });
-    set({ selectedId: f.id });
-    enterFocus(f); // open the focused drawing view on the new frame
   }
 
   // Mouse and trackpad: scroll pans, pinch or ctrl+scroll zooms.
@@ -481,22 +456,17 @@ export function Canvas(props: {
     } else setCam({ ...c, x: c.x - e.deltaX, y: c.y - e.deltaY });
   }
 
-  const spaceDown = useRef(false);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === "Escape" && getState().focusId && !isTyping(e)) exitFocus();
-      if (e.code === "Space" && !isTyping(e)) spaceDown.current = true;
       if ((e.key === "Backspace" || e.key === "Delete") && !isTyping(e)) {
         const id = getState().selectedId;
         if (id) deleteFrame(id);
       }
     };
-    const up = (e: KeyboardEvent) => e.code === "Space" && (spaceDown.current = false);
     window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
     return () => {
       window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
     };
   }, []);
 
@@ -532,11 +502,6 @@ export function Canvas(props: {
             focused={f.id === focusId}
           />
         ))}
-        {live?.type === "draw" && !live.frameId && (
-          <svg className="live-ink" style={{ left: 0, top: 0, width: 1, height: 1 }}>
-            <path d={strokePath({ id: "live", points: live.points, kind: "sketch" })} fill="var(--ink)" />
-          </svg>
-        )}
         {pressAt && <div className="press-ring" style={{ left: pressAt.x, top: pressAt.y }} />}
         {noteTarget &&
           (() => {
@@ -553,17 +518,6 @@ export function Canvas(props: {
               fill={live.kind === "markup" ? "var(--markup)" : "var(--ink)"}
             />
           </svg>
-        )}
-        {live?.type === "frame" && (
-          <div
-            className="frame-ghost"
-            style={{
-              left: Math.min(live.x0, live.x1),
-              top: Math.min(live.y0, live.y1),
-              width: Math.abs(live.x1 - live.x0),
-              height: Math.abs(live.y1 - live.y0),
-            }}
-          />
         )}
       </div>
       {noteTarget &&
@@ -584,8 +538,8 @@ export function Canvas(props: {
       {frames.length === 0 && (
         <div className="empty-hint">
           {surfaceId
-            ? "Draw a frame here to sketch a variation of this surface."
-            : "Pick the frame tool and drag a rectangle to start a surface. Tap to drop the selected device."}
+            ? "Tap New screen to sketch another state of this surface."
+            : "Tap New screen, pick a device, and start drawing."}
         </div>
       )}
     </div>
@@ -630,7 +584,7 @@ function FocusBar({ frame: f, onDone }: { frame: Frame; onDone: () => void }) {
         )}
         {(accepted > 0 || marked || (!f.code && sketched)) && (
           <button className="btn ink" disabled={!!f.busy} onClick={() => runGenerate(f.id)}>
-            {f.code ? "Rebuild" : "Generate"}
+            {f.code ? `Rebuild · ${dollars(COST_ESTIMATE.variation)}` : `Generate · ${dollars(COST_ESTIMATE.screen)}`}
           </button>
         )}
       </div>

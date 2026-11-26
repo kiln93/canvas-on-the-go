@@ -17,10 +17,19 @@ import type {
   VariationsResponse,
 } from "./types.js";
 
-const MODEL = "claude-opus-5-5";
-// Claude Opus 5.5 list prices, USD per million tokens. Used for the in-app cost meter.
-const PRICE_IN = 4;
-const PRICE_OUT = 20;
+// List prices, USD per million tokens, for the in-app cost meter. Cache writes (5-minute) cost 1.25x input;
+// cache reads are much cheaper, and every call re-reads the ~21k-token skills block.
+const PRICES = {
+  "claude-opus-5-5": { in: 4, out: 20, cacheWrite: 5, cacheRead: 0.2 },
+  "claude-sonnet-5-5": { in: 2, out: 10, cacheWrite: 2.5, cacheRead: 0.1 },
+} as const;
+type ModelId = keyof typeof PRICES;
+const pick = (m: string | undefined, fallback: ModelId): ModelId => (m && m in PRICES ? (m as ModelId) : fallback);
+// Screens are built (and, when the checks find problems, reviewed) by BUILD_MODEL. Set the BUILD_MODEL
+// env var to claude-opus-5-5 for Opus. Suggestions, variation plans and briefs use the helper model.
+const BUILD_MODEL = pick(process.env.BUILD_MODEL, "claude-sonnet-5-5");
+const HELPER_MODEL: ModelId = "claude-sonnet-5-5";
+const BUILD_EFFORT = "medium" as const;
 // Server-side fallback: if a request is declined by a safety classifier, the API retries it on
 // a fallback model chosen by refusal category, inside the same call.
 const FALLBACK = { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const };
@@ -43,9 +52,11 @@ function client() {
 
 function usageOf(msg: Anthropic.Beta.BetaMessage): Usage {
   const u = msg.usage;
-  const input =
-    u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
-  const cost = (input * PRICE_IN + u.output_tokens * PRICE_OUT) / 1_000_000;
+  const written = u.cache_creation_input_tokens ?? 0;
+  const read = u.cache_read_input_tokens ?? 0;
+  const input = u.input_tokens + written + read;
+  const p = PRICES[pick(msg.model, BUILD_MODEL)];
+  const cost = (u.input_tokens * p.in + written * p.cacheWrite + read * p.cacheRead + u.output_tokens * p.out) / 1_000_000;
   return { input_tokens: input, output_tokens: u.output_tokens, cost };
 }
 
@@ -114,6 +125,48 @@ const generateSchema = {
   },
 };
 
+/** When a built screen changes, Claude sends only the changed lines: far fewer output tokens than a rewrite. */
+const editsSchema = {
+  type: "array",
+  items: {
+    type: "object",
+    additionalProperties: false,
+    required: ["find", "replace"],
+    properties: { find: { type: "string" }, replace: { type: "string" } },
+  },
+};
+const editSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["plan", "title", "summary", "edits"],
+  properties: {
+    plan: { type: "string" },
+    title: { type: "string" },
+    summary: { type: "string" },
+    edits: editsSchema,
+  },
+};
+const EDIT_RULES = [
+  "Return the change as edits to the current code, not a rewrite.",
+  "Each edit's find is an exact snippet of the current code (a few whole lines, unique in the file) and replace is its new text.",
+  "Keep edits as small as the change allows. Only when most of the screen must change, return one edit with an empty find and the whole new code as replace.",
+].join(" ");
+
+/** Applies find/replace edits in order. Returns null when an edit doesn't match exactly once. */
+export function applyEdits(code: string, edits: { find: string; replace: string }[]): string | null {
+  let out = code;
+  for (const e of edits) {
+    if (!e.find) {
+      out = e.replace;
+      continue;
+    }
+    const at = out.indexOf(e.find);
+    if (at < 0 || out.indexOf(e.find, at + 1) >= 0) return null;
+    out = out.slice(0, at) + e.replace + out.slice(at + e.find.length);
+  }
+  return out;
+}
+
 function image(data: string): Anthropic.Beta.BetaImageBlockParam {
   return { type: "image", source: { type: "base64", media_type: "image/png", data } };
 }
@@ -135,7 +188,7 @@ export async function suggest(req: SuggestRequest): Promise<SuggestResponse> {
     },
   ];
   const msg = await client().beta.messages.create({
-    model: MODEL,
+    model: HELPER_MODEL,
     max_tokens: 4000,
     system: SUGGEST_SYSTEM,
     output_config: { effort: "low", format: { type: "json_schema", schema: suggestSchema } },
@@ -162,6 +215,19 @@ const skillsBlock: Anthropic.Beta.BetaTextBlockParam = {
 const withSkills = (prompt: string): Anthropic.Beta.BetaTextBlockParam[] => [skillsBlock, { type: "text", text: prompt }];
 
 export async function generate(req: GenerateRequest, onProgress?: (p: Progress) => void): Promise<GenerateResponse> {
+  if (req.previousCode) {
+    const edited = await generateOnce(req, true, onProgress);
+    if (edited) return edited;
+    // The edits didn't line up with the code: fall back to writing the screen out in full.
+  }
+  return (await generateOnce({ ...req }, false, onProgress))!;
+}
+
+async function generateOnce(
+  req: GenerateRequest,
+  asEdits: boolean,
+  onProgress?: (p: Progress) => void,
+): Promise<GenerateResponse | null> {
   const content: Anthropic.Beta.BetaContentBlockParam[] = [];
   if (req.image) content.push(image(req.image));
   content.push({
@@ -174,6 +240,7 @@ export async function generate(req: GenerateRequest, onProgress?: (p: Progress) 
       req.notes.length ? `Confirmed notes:\n${req.notes.map((n) => `- ${n}`).join("\n")}` : "No notes.",
       req.instruction ? `Instruction: ${req.instruction}` : "",
       req.previousCode ? `previousCode:\n${req.previousCode}` : "",
+      asEdits ? EDIT_RULES : "",
       req.image
         ? req.previousCode
           ? "The image shows markups drawn over the current screen."
@@ -185,10 +252,10 @@ export async function generate(req: GenerateRequest, onProgress?: (p: Progress) 
   });
   // Streaming keeps long generations under HTTP timeouts.
   const stream = client().beta.messages.stream({
-    model: MODEL,
-    max_tokens: 32000,
+    model: BUILD_MODEL,
+    max_tokens: 20000,
     system: withSkills(GENERATE_SYSTEM),
-    output_config: { effort: "high", format: { type: "json_schema", schema: generateSchema } },
+    output_config: { effort: BUILD_EFFORT, format: { type: "json_schema", schema: asEdits ? editSchema : generateSchema } },
     messages: [{ role: "user", content }],
     ...FALLBACK,
   });
@@ -200,6 +267,12 @@ export async function generate(req: GenerateRequest, onProgress?: (p: Progress) 
   });
   onProgress?.({ phase: "thinking", chars: 0 });
   const msg = await stream.finalMessage();
+  if (asEdits) {
+    const out = jsonText(msg) as { title: string; summary: string; edits: { find: string; replace: string }[] };
+    const code = applyEdits(req.previousCode ?? "", out.edits);
+    if (code == null) return null;
+    return { title: out.title, summary: out.summary, code, usage: usageOf(msg) };
+  }
   const { plan: _plan, ...out } = jsonText(msg) as Omit<GenerateResponse, "usage"> & { plan: string };
   return { ...out, usage: usageOf(msg) };
 }
@@ -207,12 +280,12 @@ export async function generate(req: GenerateRequest, onProgress?: (p: Progress) 
 const reviewSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["verdict", "findings", "keep", "code"],
+  required: ["verdict", "findings", "keep", "edits"],
   properties: {
     verdict: { type: "string", enum: ["ship", "fix"] },
     findings: { type: "array", items: { type: "string" } },
     keep: { type: "string" },
-    code: { type: "string" },
+    edits: editsSchema,
   },
 };
 
@@ -220,6 +293,10 @@ const reviewSchema = {
 export async function review(req: ReviewRequest, onProgress?: (p: Progress) => void): Promise<ReviewResponse> {
   if (!req.code) throw new HttpError(400, { error: "Nothing to review.", code: "bad_request" });
   const lint = lintScreen(req.code, req.device);
+  // Only pay for a review when the checks find something to fix.
+  if (!lint.length) {
+    return { verdict: "ship", findings: [], keep: "", code: "", usage: { input_tokens: 0, output_tokens: 0, cost: 0 } };
+  }
   const content: Anthropic.Beta.BetaContentBlockParam[] = [];
   if (req.image) content.push(image(req.image));
   content.push({
@@ -233,15 +310,16 @@ export async function review(req: ReviewRequest, onProgress?: (p: Progress) => v
       req.image ? "The image is the designer's sketch (or markups) the screen was built from." : "",
       lint.length ? `Linter findings:\n${lint.map((l) => `- ${l}`).join("\n")}` : "Linter findings: none.",
       `Screen code:\n${req.code}`,
+      `If you fix anything: ${EDIT_RULES}`,
     ]
       .filter(Boolean)
       .join("\n\n"),
   });
   const stream = client().beta.messages.stream({
-    model: MODEL,
-    max_tokens: 32000,
+    model: BUILD_MODEL,
+    max_tokens: 20000,
     system: withSkills(REVIEW_SYSTEM),
-    output_config: { effort: "medium", format: { type: "json_schema", schema: reviewSchema } },
+    output_config: { effort: "low", format: { type: "json_schema", schema: reviewSchema } },
     messages: [{ role: "user", content }],
     ...FALLBACK,
   });
@@ -252,13 +330,14 @@ export async function review(req: ReviewRequest, onProgress?: (p: Progress) => v
   });
   onProgress?.({ phase: "reviewing", chars: 0 });
   const msg = await stream.finalMessage();
-  const out = jsonText(msg) as Omit<ReviewResponse, "usage">;
-  const fixed = out.verdict === "fix" && out.code.trim().length > 0;
+  const out = jsonText(msg) as Omit<ReviewResponse, "usage" | "code"> & { edits: { find: string; replace: string }[] };
+  const code = out.verdict === "fix" && out.edits.length ? applyEdits(req.code, out.edits) : null;
+  const fixed = !!code?.trim();
   return {
     verdict: fixed ? "fix" : "ship",
     findings: out.findings.slice(0, 8),
     keep: out.keep,
-    code: fixed ? out.code : "",
+    code: fixed ? code! : "",
     usage: usageOf(msg),
   };
 }
@@ -284,7 +363,7 @@ const variationsSchema = {
 export async function planVariations(req: VariationsRequest): Promise<VariationsResponse> {
   if (!req.code) throw new HttpError(400, { error: "Generate the screen first.", code: "bad_request" });
   const msg = await client().beta.messages.create({
-    model: MODEL,
+    model: HELPER_MODEL,
     max_tokens: 3000,
     system: VARIATIONS_SYSTEM,
     output_config: { effort: "low", format: { type: "json_schema", schema: variationsSchema } },
@@ -345,7 +424,7 @@ export async function importBrief(req: ImportRequest): Promise<ImportResponse> {
   }
   if (text.length > MAX_DOC_CHARS) text = text.slice(0, MAX_DOC_CHARS);
   const msg = await client().beta.messages.create({
-    model: MODEL,
+    model: HELPER_MODEL,
     max_tokens: 4000,
     system: BRIEF_SYSTEM,
     output_config: { effort: "low", format: { type: "json_schema", schema: briefSchema } },

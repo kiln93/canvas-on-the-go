@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { keyboardOnPencilTap, primeKeyboard } from "./keyboard";
 import { ThinkingOrb } from "thinking-orbs";
-import { runGenerate, runSuggest } from "../api";
+import { COST_ESTIMATE, dollars, runGenerate, runSuggest } from "../api";
 import { NOTE_TAGS, uid, updateFrame, type Frame, type NoteItem, type NoteTag } from "../store";
 
 export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperties }) {
@@ -114,12 +114,12 @@ export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperti
               Review markups
             </button>
             <button className="btn ink" disabled={!!f.busy} onClick={() => runGenerate(f.id)}>
-              Rebuild
+              Rebuild · {dollars(COST_ESTIMATE.variation)}
             </button>
           </>
         ) : (
           <button className="btn ink wide" disabled={!!f.busy || (accepted === 0 && !f.strokes.length)} onClick={() => runGenerate(f.id)}>
-            Generate screen{accepted ? ` from ${accepted} note${accepted > 1 ? "s" : ""}` : ""}
+            Generate screen{accepted ? ` from ${accepted} note${accepted > 1 ? "s" : ""}` : ""} · {dollars(f.code ? COST_ESTIMATE.variation : COST_ESTIMATE.screen)}
           </button>
         )}
       </div>

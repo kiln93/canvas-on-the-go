@@ -1,5 +1,6 @@
+import { createPortal } from "react-dom";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { runGenerate, runSuggest, runVariations, setProgress, useProgress } from "../api";
+import { buildVariations, COST_ESTIMATE, dollars, planVariations, runGenerate, runSuggest, setProgress, useProgress } from "../api";
 import { frameHtml } from "../runtime/frameHtml";
 import { addFrame, deleteFrame, DEVICES, getState, set, updateFrame, type Frame } from "../store";
 import { strokePath } from "./ink";
@@ -154,7 +155,7 @@ export const FrameView = memo(function FrameView(props: {
         )}
         {f.code && markups.length > 0 && (
           <button className="btn ink" disabled={!!f.busy} onClick={() => runGenerate(f.id)}>
-            Apply markups
+            Apply markups · {dollars(COST_ESTIMATE.variation)}
           </button>
         )}
         {f.code && (
@@ -178,8 +179,13 @@ export const FrameView = memo(function FrameView(props: {
           </button>
         )}
         {inSurface && f.primary && f.code && (
-          <button className="btn ghost" disabled={!!f.busy} onClick={() => runVariations(f.id)} title="Ask for more states and edge cases">
-            Suggest more states
+          <button
+            className="btn ghost"
+            disabled={!!f.busy || !!f.variationPlan}
+            onClick={() => planVariations(f.id)}
+            title="Claude suggests states and edge cases; you pick which to build"
+          >
+            Suggest variations
           </button>
         )}
         {f.versions.length > 1 && (
@@ -205,6 +211,7 @@ export const FrameView = memo(function FrameView(props: {
           Delete
         </button>
         {variationOpen && <VariationInput frame={f} onDone={() => setVariationOpen(false)} />}
+        {f.variationPlan && <VariationPlan frame={f} />}
         {f.error && (
           <div className="frame-error" role="alert">
             {f.error}
@@ -301,5 +308,42 @@ function VariationInput({ frame, onDone }: { frame: Frame; onDone: () => void })
         <input autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Or describe a scenario…" />
       </form>
     </div>
+  );
+}
+
+/** The variations Claude suggested, to pick from before anything is built (and paid for). */
+function VariationPlan({ frame: f }: { frame: Frame }) {
+  const plan = f.variationPlan ?? [];
+  const [on, setOn] = useState<boolean[]>(() => plan.map((_, i) => i < 3));
+  const picked = plan.filter((_, i) => on[i]);
+  const close = () => updateFrame(f.id, { variationPlan: undefined });
+  // A sheet over the whole app (not in the zoomed canvas), so it is always on screen and full size.
+  return createPortal(
+    <div className="modal-scrim" data-ui onClick={(e) => e.target === e.currentTarget && close()}>
+      <div className="modal plan-sheet" role="dialog" aria-label="Pick the variations to build">
+        <h2>Variations of {f.name || "this screen"}</h2>
+        <p className="small muted">
+          Each one is built from this screen, {dollars(COST_ESTIMATE.variation)} each. Pick the ones you want.
+        </p>
+      {plan.map((v, i) => (
+        <label key={v.name} className="plan-row">
+          <input type="checkbox" checked={!!on[i]} onChange={() => setOn((o) => o.map((x, j) => (j === i ? !x : x)))} />
+          <span>
+            <strong>{v.name}</strong>
+            <span className="muted small"> {v.instruction}</span>
+          </span>
+        </label>
+      ))}
+      <div className="plan-actions">
+        <button className="btn ink" disabled={!picked.length} onClick={() => buildVariations(f.id, picked)}>
+          Build {picked.length} · {dollars(picked.length * COST_ESTIMATE.variation)}
+        </button>
+        <button className="btn ghost" onClick={close}>
+          Not now
+        </button>
+      </div>
+      </div>
+    </div>,
+    document.body,
   );
 }

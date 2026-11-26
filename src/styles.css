@@ -164,6 +164,10 @@ input, textarea { -webkit-user-select: text; user-select: text; }
   display: flex; flex-direction: column; gap: 8px;
 }
 .variation form { display: flex; }
+.plan-sheet { max-height: calc(100% - 32px); overflow-y: auto; }
+.plan-row { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.4; padding: 4px 0; cursor: pointer; }
+.plan-row input { width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--accent); flex-shrink: 0; }
+.plan-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* Top bar */
@@ -231,12 +235,22 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 /* Toolbar */
 .toolbar {
   position: absolute; left: 50%; transform: translate3d(-50%, 0, 0); bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 10;
-  display: flex; align-items: center; gap: 4px; padding: 6px; max-width: calc(100vw - 32px); overflow-x: auto;
+  display: flex; align-items: center; gap: 4px; padding: 6px; max-width: calc(100vw - 32px);
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card);
 }
 .tool { width: 44px; height: 44px; border: 0; border-radius: var(--r-input); background: transparent; color: var(--icon); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
 .tool.active { background: rgba(1, 106, 113, 0.08); color: var(--accent); }
-.devices { display: flex; gap: 4px; padding: 0 4px; }
+.new-screen { position: relative; }
+.new-screen-btn { height: 44px; padding: 0 18px; font-size: 16px; }
+.device-sheet {
+  position: absolute; bottom: calc(100% + 14px); left: 0; min-width: 220px; padding: 6px; z-index: 20;
+  display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card);
+}
+.device-sheet button {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px; min-height: 48px; padding: 0 12px;
+  background: none; border: 0; border-radius: var(--r-input); font-size: 16px; font-weight: 500; color: var(--ink); cursor: pointer; text-align: left;
+}
+.device-sheet button:active { background: rgba(39, 37, 30, 0.06); }
 .divider { width: 1px; height: 24px; background: var(--border); margin: 0 4px; flex-shrink: 0; }
 
 /* Preview */

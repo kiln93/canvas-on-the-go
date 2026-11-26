@@ -262,18 +262,21 @@ export async function importPrd(req: ImportRequest): Promise<ImportResponse> {
   return out;
 }
 
+/** About what a build costs: a new screen, and a variation or rebuild (sent as edits to the built screen). */
+export const COST_ESTIMATE = { screen: 0.15, variation: 0.05 };
+export const dollars = (n: number) => (n < 0.1 ? `about ${Math.max(1, Math.round(n * 100))}¢` : `about $${n.toFixed(2)}`);
+
 /**
  * Asks Claude which states of a surface's screen are worth designing (empty, error, a product-specific
- * edge case…), then builds each one as a variation frame beside the original.
+ * edge case…). Nothing is built yet: the plan waits on the frame for the designer to pick from.
  */
-export async function runVariations(surfaceId: string) {
+export async function planVariations(surfaceId: string) {
   const primary = frame(surfaceId);
   if (!primary?.code || primary.busy) return;
   if (overCap()) return updateFrame(surfaceId, { error: CAP_MSG });
   const siblings = getState().project.frames.filter((x) => x.surfaceId === surfaceId && x.id !== surfaceId);
   updateFrame(surfaceId, { busy: "planning", error: undefined, variationsPlanned: true });
   setProgress(surfaceId, { phase: "planning", startedAt: Date.now() });
-  let plan: VariationsResponse;
   try {
     const req: VariationsRequest = {
       brief: getState().project.brief,
@@ -282,21 +285,27 @@ export async function runVariations(surfaceId: string) {
       code: primary.code,
       existing: siblings.map((x) => x.name).filter(Boolean),
     };
-    plan = await post<VariationsResponse>("/api/variations", req);
+    const plan = await post<VariationsResponse>("/api/variations", req);
     addSpend(plan.usage);
+    updateFrame(surfaceId, { busy: undefined, variationPlan: plan.variations });
   } catch (e) {
+    updateFrame(surfaceId, { busy: undefined, error: (e as Error).message });
+  } finally {
     setProgress(surfaceId, undefined);
-    return updateFrame(surfaceId, { busy: undefined, error: (e as Error).message });
   }
-  setProgress(surfaceId, undefined);
-  updateFrame(surfaceId, { busy: undefined });
+}
 
+/** Builds the variations the designer picked, beside the original, two at a time. */
+export async function buildVariations(surfaceId: string, picked: { name: string; instruction: string }[]) {
+  const primary = frame(surfaceId);
+  updateFrame(surfaceId, { variationPlan: undefined });
+  if (!primary?.code || !picked.length) return;
   // Lay them out in rows of three to the right of the original, leaving room for note cards.
   const all = getState().project.frames.filter((x) => x.surfaceId === surfaceId);
   const startX = Math.max(...all.map((x) => x.x + x.w)) + 720;
   const stepX = primary.w + 720;
   const stepY = primary.h + 200;
-  const made = plan.variations.map((v, i) =>
+  const made = picked.map((v, i) =>
     addFrame({
       name: v.name,
       device: primary.device,
@@ -308,10 +317,11 @@ export async function runVariations(surfaceId: string) {
     }),
   );
   window.dispatchEvent(new Event("cotg:fit-all")); // zoom out so every variation is in view
-  // Build a few at a time.
-  const queue = made.map((f, i) => () => runGenerate(f.id, `Make the "${plan.variations[i].name}" variation of this screen: ${plan.variations[i].instruction}`, primary.code));
+  const queue = made.map(
+    (f, i) => () => runGenerate(f.id, `Make the "${picked[i].name}" variation of this screen: ${picked[i].instruction}`, primary.code),
+  );
   const worker = async () => {
     for (let job = queue.shift(); job; job = queue.shift()) await job();
   };
-  await Promise.all([worker(), worker(), worker()]);
+  await Promise.all([worker(), worker()]);
 }
