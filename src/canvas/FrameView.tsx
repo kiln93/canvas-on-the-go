@@ -62,11 +62,13 @@ export const FrameView = memo(function FrameView(props: {
   return (
     <>
       <div className={`frame ${selected ? "selected" : ""}`} style={{ left: f.x, top: f.y, width: f.w, height: f.h }}>
-        <div className="frame-label" style={{ transform: `scale(${ui})` }}>
-          <span>{f.name || (f.primary ? "Untitled surface" : "Variation")}</span>
-          <span className="muted">{DEVICES[f.device].label}</span>
-          {f.code && !f.approved && <span className="pill">Review</span>}
-        </div>
+        {!props.focused && (
+          <div className="frame-label" style={{ transform: `scale(${ui})` }}>
+            <span>{f.name || (f.primary ? "Untitled surface" : "Variation")}</span>
+            <span className="muted">{DEVICES[f.device].label}</span>
+            {f.code && !f.approved && <span className="pill">Review</span>}
+          </div>
+        )}
         {f.code && (
           <iframe
             ref={(el) => {
@@ -125,7 +127,8 @@ export const FrameView = memo(function FrameView(props: {
       <div
         data-ui
         className="frame-actions"
-        style={{ left: f.x, top: f.y + f.h + 12 * ui, transform: `scale(${ui})` }}
+        // Wrap within the frame's width, so zoomed-out buttons never run under the next frame's.
+        style={{ left: f.x, top: f.y + f.h + 12 * ui, transform: `scale(${ui})`, maxWidth: Math.max(160, f.w / ui) }}
       >
         <button
           className="btn"
@@ -246,7 +249,8 @@ export const FrameView = memo(function FrameView(props: {
         </div>
       )}
 
-      {(hasNotes || (!f.code && sketch.length > 0)) && (
+      {/* In the focused view the notes live in a panel beside the drawing instead. */}
+      {!props.focused && (hasNotes || (!f.code && sketch.length > 0)) && (
         <>
           <svg className="tether" style={{ left: f.x + f.w, top: f.y + 40, width: 32, height: 2 }}>
             <line x1="0" y1="1" x2="32" y2="1" />

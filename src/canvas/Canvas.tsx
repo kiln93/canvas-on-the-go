@@ -19,7 +19,9 @@ import {
 } from "../store";
 import { FrameView } from "./FrameView";
 import { strokePath } from "./ink";
-import { NoteComposer, type NoteTarget } from "./NoteComposer";
+import { NoteCard } from "./NoteCard";
+import { NoteComposer, NoteTargetBox, type NoteTarget } from "./NoteComposer";
+import { primeKeyboard } from "./keyboard";
 import { pickInFrame } from "./pick";
 import { runGenerate, runSuggest } from "../api";
 
@@ -70,6 +72,7 @@ export function Canvas(props: {
   const holdTimer = useRef<ReturnType<typeof setTimeout>>();
   // Until a Pencil shows up, a single finger uses the tool (phones); after that fingers only pan and zoom.
   const penSeen = useRef(false);
+  const holdOpened = useRef(false); // a press-and-hold just opened a note box; the lift brings up the keyboard
   const beforeFocus = useRef<Camera | null>(null);
   const flight = useRef<gsap.core.Tween>();
 
@@ -79,7 +82,7 @@ export function Canvas(props: {
     const from = { ...camRef.current };
     flight.current = gsap.to(from, { ...to, duration: 0.6, ease: "power3.inOut", onUpdate: () => setCam({ ...from }) });
   };
-  /** Camera that makes a frame fill the screen in the focused view (with its notes beside it when there's room). */
+  /** Camera that makes a frame fill the screen in the focused view. */
   const fitFocus = (f: Frame): Camera | null => {
     const el = rootRef.current;
     if (!el) return null;
@@ -87,11 +90,12 @@ export function Canvas(props: {
     const H = el.clientHeight;
     const top = 52 + 64; // top bar plus the focus bar
     const bottom = 96; // the toolbar
-    const withCard = W >= 900;
-    const span = f.w + (withCard ? 32 + 320 : 0);
-    const z = clampZ(Math.min(2.5, (H - top - bottom) / f.h, (W - 32) / span));
-    return { z, x: (W - span * z) / 2 - f.x * z, y: top + (H - top - bottom - f.h * z) / 2 - f.y * z };
+    // The frame takes the whole width of the screen, like a sheet of paper; scroll with two fingers for the rest.
+    const z = clampZ(Math.min(3, (W - 24) / f.w));
+    const fits = f.h * z <= H - top - bottom;
+    return { z, x: (W - f.w * z) / 2 - f.x * z, y: (fits ? top + (H - top - bottom - f.h * z) / 2 : top) - f.y * z };
   };
+
   /** Opens the focused drawing view on a frame. */
   const enterFocus = (f: Frame) => {
     const to = fitFocus(f);
@@ -113,7 +117,7 @@ export function Canvas(props: {
     const W = el.clientWidth;
     const H = el.clientHeight;
     const top = 52 + 24;
-    const bottom = 180; // the frame's buttons plus the toolbar
+    const bottom = W < 500 ? 260 : 180; // the frame's buttons (they wrap on a phone) plus the toolbar
     const z = clampZ(Math.min(prev?.z ?? 1, (H - top - bottom) / f.h, (W - 32) / f.w));
     flyTo({ z, x: (W - f.w * z) / 2 - f.x * z, y: top + (H - top - bottom - f.h * z) / 2 - f.y * z });
   };
@@ -206,6 +210,11 @@ export function Canvas(props: {
 
   function onPointerDown(e: React.PointerEvent) {
     if ((e.target as HTMLElement).closest("[data-ui]")) return;
+    // A tap on the canvas closes the keyboard; and stopping the tap's mouse events keeps a note box
+    // that opens under the finger (press and hold) from losing its focus when the finger lifts.
+    e.preventDefault();
+    const active = document.activeElement as HTMLElement | null;
+    if (active?.matches("input, textarea")) active.blur();
     if (e.pointerType === "pen") penSeen.current = true;
     const isTouch = e.pointerType === "touch";
     // Palm rejection: while the Pencil is drawing, ignore touches.
@@ -276,6 +285,7 @@ export function Canvas(props: {
           gesture.current = null;
           setLive(null);
           setPressAt(null);
+          holdOpened.current = true;
           startNote(hit, w.x - hit.x, w.y - hit.y);
         }, HOLD_MS);
       }
@@ -376,6 +386,13 @@ export function Canvas(props: {
   function onPointerUp(e: React.PointerEvent) {
     if (!pointers.current.has(e.pointerId)) return; // an ignored touch (palm) or a UI tap
     pointers.current.delete(e.pointerId);
+    if (holdOpened.current) {
+      holdOpened.current = false;
+      // The lift is a tap, so the keyboard may open now: focus the note box, or hold the keyboard for it.
+      const box = document.querySelector<HTMLInputElement>(".note-composer input");
+      if (box) box.focus();
+      else primeKeyboard();
+    }
     const g = gesture.current;
     const remainingTouches = [...pointers.current.values()].filter((t) => t.type === "touch").length;
 
@@ -524,14 +541,7 @@ export function Canvas(props: {
         {noteTarget &&
           (() => {
             const f = frames.find((x) => x.id === noteTarget.frameId);
-            return f ? (
-              <NoteComposer
-                frame={f}
-                target={noteTarget}
-                scale={1 / Math.max(cam.z, 0.35)}
-                onClose={() => setNoteTarget(null)}
-              />
-            ) : null;
+            return f ? <NoteTargetBox frame={f} target={noteTarget} /> : null;
           })()}
         {liveFrame && live?.type === "draw" && (
           <svg
@@ -556,6 +566,20 @@ export function Canvas(props: {
           />
         )}
       </div>
+      {noteTarget &&
+        rootRef.current &&
+        (() => {
+          const f = frames.find((x) => x.id === noteTarget.frameId);
+          return f ? (
+            <NoteComposer
+              frame={f}
+              target={noteTarget}
+              cam={cam}
+              viewport={{ w: rootRef.current.clientWidth, h: rootRef.current.clientHeight }}
+              onClose={() => setNoteTarget(null)}
+            />
+          ) : null;
+        })()}
       {focusId && frames[0] && <FocusBar frame={frames[0]} onDone={exitFocus} />}
       {frames.length === 0 && (
         <div className="empty-hint">
@@ -574,30 +598,50 @@ const isTyping = (e: KeyboardEvent) => {
   return t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable;
 };
 
-/** The bar above a frame in the focused drawing view: back to the canvas, and the next step. */
+/** The bar above a frame in the focused drawing view: back to the canvas, the notes, and the next step. */
 function FocusBar({ frame: f, onDone }: { frame: Frame; onDone: () => void }) {
   const sketched = f.strokes.some((s) => s.kind === "sketch");
   const marked = f.strokes.some((s) => s.kind === "markup");
-  const accepted = f.notes.filter((n) => n.status === "accepted").length;
+  const live = f.notes.filter((n) => n.status === "pending" || n.status === "accepted");
+  const accepted = live.filter((n) => n.status === "accepted").length;
+  const [notesOpen, setNotesOpen] = useState(false);
+  // Open the notes when suggestions arrive.
+  const suggesting = f.busy === "suggesting";
+  useEffect(() => {
+    if (suggesting) setNotesOpen(true);
+  }, [suggesting]);
   return (
-    <div className="focus-bar" data-ui>
-      <button className="btn" onClick={onDone}>
-        ← Done
-      </button>
-      <span className="focus-title">
-        {f.name || (f.primary ? "Untitled surface" : "Variation")}
-        <span className="muted"> · {DEVICES[f.device].label}</span>
-      </span>
-      {!f.code && (
-        <button className="btn" disabled={!!f.busy || !sketched} onClick={() => runSuggest(f.id)}>
-          ✓ Suggest notes
+    <>
+      <div className="focus-bar" data-ui>
+        <button className="btn" onClick={onDone}>
+          ← Done
         </button>
-      )}
-      {(accepted > 0 || marked || (!f.code && sketched)) && (
-        <button className="btn ink" disabled={!!f.busy} onClick={() => runGenerate(f.id)}>
-          {f.code ? "Rebuild" : "Generate"}
+        <span className="focus-title">
+          {f.name || (f.primary ? "Untitled surface" : "Variation")}
+          <span className="muted"> · {DEVICES[f.device].label}</span>
+        </span>
+        <button className={`btn ${notesOpen ? "on" : ""}`} aria-expanded={notesOpen} onClick={() => setNotesOpen((o) => !o)}>
+          Notes{live.length ? ` · ${live.length}` : ""}
         </button>
+        {!f.code && sketched && (
+          <button className="btn" disabled={!!f.busy} onClick={() => runSuggest(f.id)}>
+            Suggest
+          </button>
+        )}
+        {(accepted > 0 || marked || (!f.code && sketched)) && (
+          <button className="btn ink" disabled={!!f.busy} onClick={() => runGenerate(f.id)}>
+            {f.code ? "Rebuild" : "Generate"}
+          </button>
+        )}
+      </div>
+      {notesOpen && (
+        <div className="focus-notes" data-ui>
+          <button className="icon-btn focus-notes-close" aria-label="Close notes" onClick={() => setNotesOpen(false)}>
+            ✕
+          </button>
+          <NoteCard frame={f} style={{}} />
+        </div>
       )}
-    </div>
+    </>
   );
 }
