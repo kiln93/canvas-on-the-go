@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { keyboardOnPencilTap, primeKeyboard } from "./keyboard";
 import { ThinkingOrb } from "thinking-orbs";
-import { buildInputs, COST_ESTIMATE, dollars, NOTHING_TO_BUILD, runGenerate, runSuggest } from "../api";
+import { buildInputs, COST_ESTIMATE, dollars, NOTHING_TO_BUILD, runGenerate, runSuggest, surfaceJob } from "../api";
 import { NOTE_TAGS, uid, updateFrame, useStore, type Frame, type NoteItem, type NoteTag } from "../store";
 import { shrinkImage } from "../images";
 import { MAX_REFS, openMobbin, suggestRefs } from "./MobbinPicker";
@@ -36,6 +36,12 @@ export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperti
           </button>
         )}
       </div>
+      <JobField frame={f} />
+      {f.assumed && visible.some((n) => n.status === "pending") && (
+        <p className="muted small note-assumed">
+          <span>Assumed:</span> {f.assumed}
+        </p>
+      )}
       {visible.length === 0 && (
         <p className="muted small note-empty">
           {f.busy === "suggesting" ? (
@@ -61,13 +67,29 @@ export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperti
               )}
               <span className="note-body">
                 <NoteText text={n.text} onChange={(text) => setNote(n.id, { text, status: "accepted", skipped: undefined })} />
+                {n.status === "pending" && !!n.options?.length && (
+                  <span className="note-options" role="group" aria-label="Answers">
+                    {n.options.map((o) => (
+                      <button
+                        key={o}
+                        className="chip"
+                        onClick={() => setNote(n.id, { text: `${n.text.replace(/\s+$/, "")} ${o}.`.replace(/\.\.$/, "."), status: "accepted", options: undefined })}
+                      >
+                        {o}
+                      </button>
+                    ))}
+                  </span>
+                )}
                 {n.skipped && <span className="note-skipped">Not built yet: {n.skipped}</span>}
               </span>
               {n.status === "pending" ? (
                 <span className="note-btns">
-                  <button aria-label="Accept" className="icon-btn ok" onClick={() => setNote(n.id, { status: "accepted" })}>
-                    ✓
-                  </button>
+                  {/* A question with answers is accepted by tapping an answer. */}
+                  {!n.options?.length && (
+                    <button aria-label="Accept" className="icon-btn ok" onClick={() => setNote(n.id, { status: "accepted" })}>
+                      ✓
+                    </button>
+                  )}
                   <button aria-label="Dismiss" className="icon-btn" onClick={() => setNote(n.id, { status: "dismissed" })}>
                     ✕
                   </button>
@@ -433,5 +455,32 @@ function RefViewer({ frame: f, id, onClose, onRemove }: { frame: Frame; id: stri
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** The screen's one-line job. Claude proposes it on "Done sketching"; the designer's words always win. */
+function JobField({ frame: f }: { frame: Frame }) {
+  const job = surfaceJob(f);
+  const [text, setText] = useState(job);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => setText(job), [job]);
+  useEffect(() => (input.current ? keyboardOnPencilTap(input.current) : undefined), []);
+  const save = () => {
+    const t = text.trim();
+    if (t !== job) updateFrame(f.surfaceId, { job: t || undefined });
+  };
+  return (
+    <label className="job-field">
+      <span>Job</span>
+      <input
+        ref={input}
+        value={text}
+        placeholder="What is this screen for?"
+        enterKeyHint="done"
+        onChange={(e) => setText(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => e.key === "Enter" && (e.currentTarget.blur(), e.preventDefault())}
+      />
+    </label>
   );
 }

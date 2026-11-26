@@ -7,6 +7,8 @@ export type Suggestion = {
   kind: "component" | "layout" | "question" | "copy";
   text: string;
   region?: Region | null;
+  /** Two or three answers the designer can pick from, for an open question. */
+  options?: string[];
 };
 
 export type SuggestRequest = {
@@ -18,9 +20,21 @@ export type SuggestRequest = {
   code?: string;
   /** What the designer has written or confirmed on this screen so far. */
   notes?: string[];
+  /** The screen's one-line job, when the designer has set it. */
+  job?: string;
+  /** Names of the project's other screens, so this one fits the flow. */
+  otherScreens?: string[];
 };
 
-export type SuggestResponse = { title: string; suggestions: Suggestion[]; usage: Usage };
+export type SuggestResponse = {
+  title: string;
+  /** One line of what Claude took as given (platform conventions), so it doesn't ask about them. */
+  assumed: string;
+  /** A proposed one-line job for the screen. */
+  job: string;
+  suggestions: Suggestion[];
+  usage: Usage;
+};
 
 export type GenerateRequest = {
   brief: string;
@@ -36,6 +50,9 @@ export type GenerateRequest = {
   refs?: { data?: string; url?: string; note: string }[];
   instruction?: string; // e.g. "empty state" for a variation
   designSystem: "shadcn";
+  job?: string; // the screen's one-line job
+  assumed?: string; // Claude's stated reading of the sketch, which the designer saw
+  otherScreens?: string[]; // names of the project's other screens
 };
 
 export type GenerateResponse = {
@@ -44,6 +61,8 @@ export type GenerateResponse = {
   summary: string;
   /** One entry per note (0-based, in the order sent): whether it was built, and what changed on screen. */
   notesDone?: { note: number; done: boolean; change: string }[];
+  /** Anything changed that no note or markup asked for; ideally empty. */
+  alsoChanged?: string;
   usage: Usage;
 };
 
@@ -73,5 +92,5 @@ export type ReviewResponse = {
   usage: Usage;
 };
 
-export type VariationsRequest = { brief: string; surfaceName: string; device: string; code: string; existing: string[] };
+export type VariationsRequest = { brief: string; surfaceName: string; device: string; code: string; existing: string[]; job?: string };
 export type VariationsResponse = { variations: { name: string; instruction: string }[]; usage: Usage };

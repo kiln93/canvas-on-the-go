@@ -236,6 +236,7 @@ export const FrameView = memo(function FrameView(props: {
         {f.summary && f.code && !f.error && (
           <div className="frame-summary">
             {f.summary}
+            {f.alsoChanged && <span className="also-changed">Also changed: {f.alsoChanged}</span>}
             {f.review && (
               <details className="review">
                 <summary>

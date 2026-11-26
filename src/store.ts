@@ -12,13 +12,17 @@ export const DEVICES: Record<DeviceId, { label: string; w: number; h: number }> 
 };
 
 /** What a note is about; the screen generator reads it as a label on the note. */
-export type NoteTag = "ui" | "interaction" | "motion" | "copy" | "data";
+export type NoteTag = "ui" | "interaction" | "motion" | "copy" | "data" | "state" | "question" | "why" | "not";
 export const NOTE_TAGS: { id: NoteTag; label: string }[] = [
   { id: "ui", label: "UI" },
   { id: "interaction", label: "Interaction" },
   { id: "motion", label: "Motion" },
   { id: "copy", label: "Copy" },
   { id: "data", label: "Data" },
+  { id: "state", label: "State" },
+  { id: "question", label: "Question" },
+  { id: "why", label: "Why" },
+  { id: "not", label: "Not this" },
 ];
 
 // "applied" notes were built into the screen; they move to the note card's History.
@@ -77,6 +81,12 @@ export type Frame = {
   refsBuilt?: string;
   /** Variations Claude suggested for this screen, waiting for the designer to pick which to build. */
   variationPlan?: { name: string; instruction: string }[];
+  /** What this screen is for, in one line. The designer's words, or Claude's proposal until they edit it. */
+  job?: string;
+  /** Claude's one-line reading of what the sketch makes obvious, shown instead of asking about it. */
+  assumed?: string;
+  /** What the last build changed that no note asked for (ideally nothing). */
+  alsoChanged?: string;
 };
 
 export type Project = {
