@@ -192,6 +192,7 @@ input, textarea { -webkit-user-select: text; user-select: text; }
   background: var(--canvas); border-bottom: 1px solid var(--border);
 }
 .focus-bar .btn { height: 40px; white-space: nowrap; flex-shrink: 0; }
+.focus-cost-short { display: none; }
 .btn.ghost.focus-done { font-size: 16px; color: var(--accent); padding: 0 10px; }
 .focus-title { flex: 1; text-align: center; padding: 0 8px; font-weight: 500; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 @media (max-width: 500px) {
@@ -459,3 +460,17 @@ button.tag { cursor: pointer; }
 .mobbin-grid.current .mobbin-shot img { aspect-ratio: 3 / 4; }
 @media (max-width: 600px) { .mobbin-grid.current { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 a.btn { display: inline-flex; align-items: center; justify-content: center; color: var(--ink); text-decoration: none; }
+@media (max-width: 500px) {
+  /* Phone drawing bar: Done, •••, Notes, Suggest, Generate must fit in one row. */
+  .focus-title { flex: 0 0 auto; margin-right: auto; }
+  .focus-bar .btn { padding: 0 10px; }
+  .focus-cost { display: none; }
+  .focus-cost-short { display: inline; }
+}
+@media (max-width: 400px) {
+  .focus-suggest { display: none; } /* in the ••• menu instead */
+  .focus-bar { gap: 4px; }
+  .focus-bar .btn { padding: 0 8px; font-size: 13px; }
+  .btn.ghost.focus-done { padding: 0 4px; }
+  .focus-title-btn { padding: 0 6px; }
+}

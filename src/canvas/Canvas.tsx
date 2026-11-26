@@ -639,7 +639,7 @@ function FocusBar({ frame: f, onDone, onPlay }: { frame: Frame; onDone: () => vo
           Notes{live.length ? ` · ${live.length}` : ""}
         </button>
         {!f.code && sketched && (
-          <button className="btn" disabled={!!f.busy} onClick={() => runSuggest(f.id)}>
+          <button className="btn focus-suggest" disabled={!!f.busy} onClick={() => runSuggest(f.id)}>
             Suggest
           </button>
         )}
@@ -647,6 +647,7 @@ function FocusBar({ frame: f, onDone, onPlay }: { frame: Frame; onDone: () => vo
           <button className="btn ink" disabled={!!f.busy} onClick={() => runGenerate(f.id)}>
             {f.code ? "Rebuild" : "Generate"}
             <span className="focus-cost"> · {dollars(f.code ? COST_ESTIMATE.variation : COST_ESTIMATE.screen)}</span>
+            <span className="focus-cost-short"> · {dollars(f.code ? COST_ESTIMATE.variation : COST_ESTIMATE.screen).replace("about ", "~")}</span>
           </button>
         )}
       </header>
@@ -699,6 +700,11 @@ function ScreenMenu({ frame: f, onPlay, onDeleted }: { frame: Frame; onPlay: () 
             </form>
           ) : (
             <>
+              {!f.code && f.strokes.some((s) => s.kind === "sketch") && (
+                <button role="menuitem" disabled={!!f.busy} onClick={() => (close(), runSuggest(f.id))}>
+                  Suggest notes from the sketch
+                </button>
+              )}
               {f.code && (
                 <button role="menuitem" onClick={() => (close(), onPlay())}>
                   ▶ Play
