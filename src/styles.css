@@ -15,6 +15,8 @@
 }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
+html, body { overflow: hidden; }
+:root { --kb: 0px; }
 body {
   background: var(--canvas);
   color: var(--ink);
@@ -182,29 +184,61 @@ input, textarea { -webkit-user-select: text; user-select: text; }
   background: var(--surface); border: 1px solid var(--markup); border-radius: var(--r-card);
   color: var(--ink); font-size: 14px; line-height: 1.45;
 }
-/* Focused drawing view: one frame fills the screen, this bar sits under the top bar */
+/* Drawing view: its own top bar, like an iOS navigation bar (56px plus the notch, matched in Canvas.tsx) */
 .focus-bar {
-  position: absolute; z-index: 11; left: 50%; transform: translate3d(-50%, 0, 0);
-  top: calc(60px + env(safe-area-inset-top)); max-width: calc(100% - 32px);
-  display: flex; align-items: center; gap: 8px; padding: 6px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card);
+  position: absolute; z-index: 11; top: 0; left: 0; right: 0; transform: translateZ(0);
+  height: calc(56px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(12px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
+  display: flex; align-items: center; gap: 8px;
+  background: var(--canvas); border-bottom: 1px solid var(--border);
 }
-.focus-bar .btn { height: 36px; white-space: nowrap; flex-shrink: 0; }
-.focus-title { padding: 0 8px; font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.focus-bar .btn { height: 40px; white-space: nowrap; flex-shrink: 0; }
+.btn.ghost.focus-done { font-size: 16px; color: var(--accent); padding: 0 10px; }
+.focus-title { flex: 1; text-align: center; padding: 0 8px; font-weight: 500; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 @media (max-width: 500px) {
-  .focus-title { display: none; }
+  /* A phone's bar keeps only its actions; the frame itself shows which screen this is. */
+  .focus-title { visibility: hidden; padding: 0; }
 }
+/* The open frame needs no selection ring */
+.app.drawing .frame.selected { outline: none; }
 .btn.on { border-color: var(--accent); color: var(--accent); }
-/* The focused view's notes: a panel on the right on iPad, a sheet above the toolbar on iPhone */
+/* The drawing view's notes (widths matched in Canvas.tsx):
+   phones: a bottom sheet over the tools, riding above the keyboard;
+   portrait iPad: a card above the tools on the right;
+   900px and wider: docked on the right under the top bar, with the tools in a rail on the left. */
 .focus-notes {
-  position: absolute; z-index: 11; right: 12px; top: calc(116px + env(safe-area-inset-top));
-  width: 340px; max-height: calc(100% - 116px - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto;
-  -webkit-overflow-scrolling: touch; touch-action: pan-y; border-radius: var(--r-card);
+  position: absolute; z-index: 12; left: 0; right: 0; bottom: var(--kb);
+  max-height: min(62%, calc(100% - 56px - 16px - env(safe-area-inset-top) - var(--kb))); overflow-y: auto;
+  -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain;
+  background: var(--surface); border-top: 1px solid var(--border); border-radius: var(--r-card) var(--r-card) 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
 }
-.focus-notes .note-card { position: static; width: auto; transform: none; padding-right: 48px; }
-.focus-notes-close { position: absolute; top: 8px; right: 8px; width: 36px; height: 36px; z-index: 1; }
-@media (max-width: 700px) {
-  .focus-notes { left: 12px; right: 12px; width: auto; top: auto; bottom: calc(96px + env(safe-area-inset-bottom)); max-height: 45%; }
+.focus-notes .note-card { position: static; width: auto; transform: none; border: 0; border-radius: 0; box-shadow: none; padding: 16px 16px 20px; }
+.focus-notes .note-head { min-height: 40px; padding-right: 72px; }
+.btn.ghost.focus-notes-close { position: absolute; top: 12px; right: 8px; height: 40px; z-index: 1; color: var(--accent); font-size: 16px; }
+@media (max-width: 599px) {
+  .app.notes-open .toolbar { display: none; }
+}
+@media (min-width: 600px) and (max-width: 899px) {
+  .focus-notes {
+    left: auto; right: 12px; width: 400px; bottom: max(calc(92px + env(safe-area-inset-bottom)), calc(var(--kb) + 8px));
+    max-height: min(55%, calc(100% - 56px - 24px - env(safe-area-inset-top) - var(--kb)));
+    border: 1px solid var(--border); border-radius: var(--r-card); padding-bottom: 0;
+  }
+}
+@media (min-width: 900px) {
+  .focus-notes {
+    left: auto; right: 0; top: calc(56px + env(safe-area-inset-top)); bottom: 0; width: 360px; max-height: none;
+    border: 0; border-left: 1px solid var(--border); border-radius: 0;
+  }
+  .focus-notes .note-card { padding: 20px 20px 24px; }
+  /* The Notes button in the top bar opens and closes the docked panel */
+  .btn.ghost.focus-notes-close { display: none; }
+  .focus-notes .note-head { padding-right: 0; }
+  .app.drawing .toolbar {
+    left: max(12px, env(safe-area-inset-left)); top: calc(50% + 28px); bottom: auto; transform: translate3d(0, -50%, 0);
+    flex-direction: column;
+  }
+  .app.drawing .toolbar .divider { width: 24px; height: 1px; margin: 4px 0; }
 }
 .key-banner code { font-size: 12px; background: #f0ede7; padding: 1px 4px; border-radius: 4px; }
 .crumbs { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -330,3 +364,8 @@ button.tag { cursor: pointer; }
 .review summary { cursor: pointer; color: var(--accent); font-weight: 500; list-style: none; }
 .review summary::-webkit-details-marker { display: none; }
 .review ul { margin: 6px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
+
+/* What a build did with each note */
+.note-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.note-change { font-size: 12px; color: var(--icon); }
+.note-skipped { font-size: 12px; color: #8a2b1d; }

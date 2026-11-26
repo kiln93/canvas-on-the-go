@@ -55,7 +55,10 @@ export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperti
               {(n.tag || n.kind === "copy") && (
                 <span className={`tag tag-${n.tag ?? "copy"}`}>{NOTE_TAGS.find((t) => t.id === (n.tag ?? "copy"))?.label}</span>
               )}
-              <NoteText text={n.text} onChange={(text) => setNote(n.id, { text, status: "accepted" })} />
+              <span className="note-body">
+                <NoteText text={n.text} onChange={(text) => setNote(n.id, { text, status: "accepted", skipped: undefined })} />
+                {n.skipped && <span className="note-skipped">Not built yet: {n.skipped}</span>}
+              </span>
               {n.status === "pending" ? (
                 <span className="note-btns">
                   <button aria-label="Accept" className="icon-btn ok" onClick={() => setNote(n.id, { status: "accepted" })}>
@@ -93,7 +96,10 @@ export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperti
             <ul className="history-list">
               {history.map((n) => (
                 <li key={n.id}>
-                  <span className="note-text">{n.text}</span>
+                  <span className="note-body">
+                    <span className="note-text">{n.text}</span>
+                    {n.change && <span className="note-change">{n.change}</span>}
+                  </span>
                   <button
                     className="link"
                     title="Use this note again in the next build"

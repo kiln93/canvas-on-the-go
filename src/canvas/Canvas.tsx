@@ -87,12 +87,21 @@ export function Canvas(props: { tool: Tool; onPlay: (id: string) => void }) {
     if (!el) return null;
     const W = el.clientWidth;
     const H = el.clientHeight;
-    const top = 52 + 64; // top bar plus the focus bar
-    const bottom = 96; // the toolbar
-    // The frame takes the whole width of the screen, like a sheet of paper; scroll with two fingers for the rest.
-    const z = clampZ(Math.min(3, (W - 24) / f.w));
-    const fits = f.h * z <= H - top - bottom;
-    return { z, x: (W - f.w * z) / 2 - f.x * z, y: (fits ? top + (H - top - bottom - f.h * z) / 2 : top) - f.y * z };
+    const safe = safeInsets();
+    const wide = W >= WIDE;
+    const top = FOCUS_BAR_H + safe.top + 16; // the drawing view's top bar
+    // The tools float at the bottom, or on wide screens sit in a rail on the left edge.
+    const bottom = (wide ? 16 : 76 + 16) + safe.bottom;
+    const left = wide ? TOOL_RAIL_W : 0;
+    // On wide screens the notes panel is docked on the right, so the frame centers in what's left.
+    const right = getState().notesOpen && wide ? NOTES_W : 0;
+    const availW = W - left - right - 32;
+    const availH = H - top - bottom;
+    // As big as the width allows, like a sheet of paper, but never so tall that most of it is off screen:
+    // a phone on a landscape iPad shows most of its height; scroll with two fingers for the rest.
+    const z = clampZ(Math.min(3, availW / f.w, (1.6 * availH) / f.h));
+    const fits = f.h * z <= availH;
+    return { z, x: left + (W - left - right - f.w * z) / 2 - f.x * z, y: (fits ? top + (availH - f.h * z) / 2 : top) - f.y * z };
   };
 
   /** Opens the focused drawing view on a frame. */
@@ -104,18 +113,25 @@ export function Canvas(props: { tool: Tool; onPlay: (id: string) => void }) {
     set({ focusId: f.id, selectedId: f.id });
     flyTo(to);
   };
+  // Opening or closing the docked notes panel on a wide screen re-centers the frame beside it.
+  const notesOpen = useStore((s) => s.notesOpen);
+  useEffect(() => {
+    const f = getState().project.frames.find((x) => x.id === getState().focusId);
+    const to = f && rootRef.current && rootRef.current.clientWidth >= WIDE && fitFocus(f);
+    if (to) flyTo(to);
+  }, [notesOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   // Back on the canvas, the frame stays in view with its buttons clear of the toolbar, no closer than before.
   const exitFocus = () => {
     const f = getState().project.frames.find((x) => x.id === getState().focusId);
     const el = rootRef.current;
-    set({ focusId: null });
+    set({ focusId: null, notesOpen: false });
     setNoteTarget(null);
     const prev = beforeFocus.current;
     beforeFocus.current = null;
     if (!f || !el) return prev && flyTo(prev);
     const W = el.clientWidth;
     const H = el.clientHeight;
-    const top = 52 + 24;
+    const top = 52 + safeInsets().top + 24;
     const bottom = W < 500 ? 260 : 180; // the frame's buttons (they wrap on a phone) plus the toolbar
     const z = clampZ(Math.min(prev?.z ?? 1, (H - top - bottom) / f.h, (W - 32) / f.w));
     flyTo({ z, x: (W - f.w * z) / 2 - f.x * z, y: top + (H - top - bottom - f.h * z) / 2 - f.y * z });
@@ -547,6 +563,22 @@ export function Canvas(props: { tool: Tool; onPlay: (id: string) => void }) {
 }
 
 const clampZ = (z: number) => Math.min(3, Math.max(0.08, z));
+// The drawing view's chrome, matched in styles.css (.focus-bar, .focus-notes).
+const FOCUS_BAR_H = 56;
+const NOTES_W = 360;
+const TOOL_RAIL_W = 76;
+const WIDE = 900;
+/** The notch and home-indicator insets, in CSS px (CSS env() values aren't readable from script). */
+function safeInsets() {
+  const probe = document.createElement("div");
+  probe.style.cssText =
+    "position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)";
+  document.body.appendChild(probe);
+  const cs = getComputedStyle(probe);
+  const out = { top: parseFloat(cs.paddingTop) || 0, bottom: parseFloat(cs.paddingBottom) || 0 };
+  probe.remove();
+  return out;
+}
 const isTyping = (e: KeyboardEvent) => {
   const t = e.target as HTMLElement;
   return t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable;
@@ -558,23 +590,25 @@ function FocusBar({ frame: f, onDone }: { frame: Frame; onDone: () => void }) {
   const marked = f.strokes.some((s) => s.kind === "markup");
   const live = f.notes.filter((n) => n.status === "pending" || n.status === "accepted");
   const accepted = live.filter((n) => n.status === "accepted").length;
-  const [notesOpen, setNotesOpen] = useState(false);
-  // Open the notes when suggestions arrive.
+  const notesOpen = useStore((s) => s.notesOpen);
+  const setNotesOpen = (open: boolean) => set({ notesOpen: open });
+  // Open the notes when suggestions arrive, or when a build leaves a note undone.
   const suggesting = f.busy === "suggesting";
+  const skipped = f.notes.some((n) => n.status === "accepted" && n.skipped);
   useEffect(() => {
-    if (suggesting) setNotesOpen(true);
-  }, [suggesting]);
+    if (suggesting || skipped) setNotesOpen(true);
+  }, [suggesting, skipped]);
   return (
     <>
-      <div className="focus-bar" data-ui>
-        <button className="btn" onClick={onDone}>
-          ← Done
+      <header className="focus-bar" data-ui>
+        <button className="btn ghost focus-done" onClick={onDone}>
+          ‹ Done
         </button>
         <span className="focus-title">
           {f.name || (f.primary ? "Untitled surface" : "Variation")}
           <span className="muted"> · {DEVICES[f.device].label}</span>
         </span>
-        <button className={`btn ${notesOpen ? "on" : ""}`} aria-expanded={notesOpen} onClick={() => setNotesOpen((o) => !o)}>
+        <button className={`btn ${notesOpen ? "on" : ""}`} aria-expanded={notesOpen} onClick={() => setNotesOpen(!notesOpen)}>
           Notes{live.length ? ` · ${live.length}` : ""}
         </button>
         {!f.code && sketched && (
@@ -584,14 +618,15 @@ function FocusBar({ frame: f, onDone }: { frame: Frame; onDone: () => void }) {
         )}
         {(accepted > 0 || marked || (!f.code && sketched)) && (
           <button className="btn ink" disabled={!!f.busy} onClick={() => runGenerate(f.id)}>
-            {f.code ? `Rebuild · ${dollars(COST_ESTIMATE.variation)}` : `Generate · ${dollars(COST_ESTIMATE.screen)}`}
+            {f.code ? "Rebuild" : "Generate"}
+            <span className="focus-cost"> · {dollars(f.code ? COST_ESTIMATE.variation : COST_ESTIMATE.screen)}</span>
           </button>
         )}
-      </div>
+      </header>
       {notesOpen && (
         <div className="focus-notes" data-ui>
-          <button className="icon-btn focus-notes-close" aria-label="Close notes" onClick={() => setNotesOpen(false)}>
-            ✕
+          <button className="btn ghost focus-notes-close" onClick={() => setNotesOpen(false)}>
+            Done
           </button>
           <NoteCard frame={f} style={{}} />
         </div>

@@ -40,9 +40,11 @@ export function App() {
     };
   }, []);
 
+  const focused = useStore((s) => !!s.focusId);
+  const notesOpen = useStore((s) => s.notesOpen);
   return (
-    <div className="app">
-      <TopBar onEditBrief={() => setEditingBrief(true)} />
+    <div className={`app ${focused ? "drawing" : ""} ${focused && notesOpen ? "notes-open" : ""}`}>
+      {!focused && <TopBar onEditBrief={() => setEditingBrief(true)} />}
       <KeyBanner />
       <Canvas tool={tool} onPlay={setPlaying} />
       <Toolbar tool={tool} setTool={setTool} />
