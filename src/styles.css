@@ -492,3 +492,4 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; colo
 }
 .note-options .chip:active { background: var(--ink); color: var(--canvas); }
 .also-changed { display: block; margin-top: 4px; color: var(--icon); }
+.refs-skipped ul { margin: 4px 0 0; padding-left: 18px; }

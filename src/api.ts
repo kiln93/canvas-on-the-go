@@ -205,7 +205,8 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
   const refsChanged = buildInputs(f).refs;
   const changes = sent.filter((n) => !standing(n)).length;
   if (!image && !changes && !instruction && refsChanged && f.code)
-    instruction = "Rework this screen to take from the attached references what each one is marked for. Keep the screen's purpose and content.";
+    instruction =
+      "Rework this screen after the attached references: take from each what its caption names, or with no caption its layout, hierarchy, spacing, type and component styling. The change must be clearly visible next to the current screen. Keep the screen's purpose, content and tint.";
   if (!image && !changes && !instruction && !(refsChanged && !f.code)) {
     return updateFrame(id, { error: f.code ? NOTHING_TO_BUILD : "Draw in the frame or add a note first." });
   }
@@ -231,6 +232,7 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
       job: surfaceJob(f) || undefined,
       assumed: !f.code ? f.assumed : undefined,
       otherScreens: otherScreens(f),
+      refsNew: refsChanged,
     };
     // Building fills the first 60% of the bar; the review and its fixes the rest.
     const built = await postStream<GenerateResponse>("/api/generate", req, (l) => {
@@ -287,6 +289,7 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
         code: out.code,
         summary: out.summary,
         alsoChanged: built.alsoChanged,
+        refsSkipped: built.refsSkipped?.length ? built.refsSkipped : undefined,
         review: out.review,
         name: cur.name || out.title,
         approved: false,
@@ -304,7 +307,8 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
         // Markups have been applied, so clear them; the sketch stays until you approve.
         strokes: cur.code ? cur.strokes.filter((s) => s.kind !== "markup") : cur.strokes,
         versions: [...cur.versions, { code: out.code, summary: out.summary, at: Date.now() }],
-        refsBuilt: builtRefs,
+        // References that didn't load still count as unbuilt, so Rebuild stays offered.
+        refsBuilt: built.refsSkipped?.length ? cur.refsBuilt : builtRefs,
       }),
       true,
     );

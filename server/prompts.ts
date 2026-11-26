@@ -111,7 +111,8 @@ Behavior and motion:
 - Motion answers an action and follows the system: pushes slide, sheets rise, dismissals reverse. 150 to 350ms, ease-out like cubic-bezier(0.16,1,0.3,1), exits faster than entrances, transform and opacity only, no bounce on UI state, no fade-up on every section. Use Motion or GSAP for anything Tailwind transitions can't do, especially when a note is tagged [Motion] or [Interaction].
 
 Editing:
-- If previousCode is given, edit that screen: change only what the notes, markups and instruction ask for, and keep everything else exactly as it is, including layout, copy, colors and spacing the designer didn't mention. Approved work is not yours to improve.
+- If previousCode is given, edit that screen: change only what the notes, markups, references and instruction ask for, and keep everything else exactly as it is, including copy, data and anything the designer didn't point at. Approved work is not yours to improve.
+- References are requests to change, not mood. When references are attached, the result must look clearly closer to each one in what its caption names (a card stack, a header, the whole layout), even if that means restructuring the screen. With no caption, take its layout, hierarchy, spacing, type scale and component styling. Keep this screen's content and the app's tint; never copy the reference app's brand, logos or copy. If a reference conflicts with a note, the note wins.
 - Every confirmed note is a required change. Make each one visible in the code, and build the behavior a note names, not only its look: "sticky" or "pinned" means it stays put while the content scrolls under it; "slides down from the top" means it animates in from above when it appears; "on tap" means it responds to a tap. A note that seems already met still asks for something more; find what that is and do it.
 - If an image of markups is given with previousCode, the strokes are change requests drawn over the current screen: arrows mean move, crossing out means remove, circles mean "this one", and handwriting says what to do.
 - For a variation instruction (empty state, error, offline…), keep the same app, chrome and tint, and change only what that state changes.
@@ -119,7 +120,7 @@ Editing:
 Before you finish, check: would a regular iPhone user trust every control? Is there one obvious focal point? Is every sketched part and note present? Is any copy generic enough to fit another app? Fix what fails.
 
 summary is one sentence on what you built or changed. title is a 1 to 4 word name for the screen.
-also_changed lists, in one plain sentence, anything you changed that no note, markup or instruction asked for. It should almost always be empty (""); never use it to justify extra changes.
+also_changed lists, in one plain sentence, anything you changed that no note, markup, reference or instruction asked for. It should almost always be empty (""); never use it to justify extra changes.
 notes_done has one entry per confirmed note, by its number: done is true only if your code implements it, and change says in one plain sentence what changed on screen for it (or, when done is false, why it couldn't be done). Never mark a note done that the code doesn't implement.`;
 
 export const BRIEF_SYSTEM = `You condense a product requirements document (PRD) into a project brief for a designer's sketching canvas.

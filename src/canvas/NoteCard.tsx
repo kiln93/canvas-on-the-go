@@ -423,6 +423,16 @@ function References({ frame: f }: { frame: Frame }) {
       </div>
       {viewing && <RefViewer frame={f} id={viewing} onClose={() => setViewing(null)} onRemove={(id) => (remove(id), setViewing(null))} />}
       {error && <p className="small note-skipped">{error}</p>}
+      {!!f.refsSkipped?.length && (
+        <div className="small note-skipped refs-skipped" role="status">
+          The last build couldn't use every reference:
+          <ul>
+            {f.refsSkipped.map((x) => (
+              <li key={x}>{x}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

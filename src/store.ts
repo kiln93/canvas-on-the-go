@@ -87,6 +87,8 @@ export type Frame = {
   assumed?: string;
   /** What the last build changed that no note asked for (ideally nothing). */
   alsoChanged?: string;
+  /** References the last build couldn't load, with why, so it's clear they weren't used. */
+  refsSkipped?: string[];
 };
 
 export type Project = {
