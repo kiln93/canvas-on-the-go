@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
 import { importPrd, runVariations } from "./api";
 import { Canvas, type Tool } from "./canvas/Canvas";
@@ -95,12 +95,32 @@ function KeyBanner() {
   );
 }
 
+/** Closes a menu or popover when a tap lands anywhere outside it. */
+function useCloseOnOutsideTap(open: boolean, close: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: PointerEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
+    };
+    const key = (e: KeyboardEvent) => e.key === "Escape" && close();
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  return ref;
+}
+
 function TopBar({ onEditBrief }: { onEditBrief: () => void }) {
   const surfaceId = useStore((s) => s.surfaceId);
   const surface = useStore((s) => s.project.frames.find((f) => f.id === s.surfaceId));
   const count = useStore((s) => s.project.frames.filter((f) => f.surfaceId === s.surfaceId).length);
   const brief = useStore((s) => s.project.brief);
   const [menu, setMenu] = useState(false);
+  const menuRef = useCloseOnOutsideTap(menu, () => setMenu(false));
   return (
     <header className="topbar" data-ui>
       <nav className="crumbs">
@@ -122,7 +142,7 @@ function TopBar({ onEditBrief }: { onEditBrief: () => void }) {
       </button>
       <div className="top-right">
         <CostMeter />
-        <div className="menu-wrap">
+        <div className="menu-wrap" ref={menuRef}>
           <button className="btn ghost" onClick={() => setMenu((m) => !m)} aria-label="Menu">
             •••
           </button>
@@ -142,9 +162,10 @@ function CostMeter() {
   const spend = useStore((s) => s.project.spend);
   const cap = useStore((s) => s.project.cap);
   const [open, setOpen] = useState(false);
+  const wrapRef = useCloseOnOutsideTap(open, () => setOpen(false));
   const pct = Math.min(100, (spend.cost / cap) * 100);
   return (
-    <div className="meter-wrap">
+    <div className="meter-wrap" ref={wrapRef}>
       <button className="meter" onClick={() => setOpen((o) => !o)} title="AI spending this month">
         <span className="meter-bar">
           <span style={{ width: `${pct}%` }} className={pct >= 100 ? "over" : ""} />

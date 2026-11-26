@@ -1,4 +1,5 @@
-import { useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { keyboardOnPencilTap, primeKeyboard } from "./keyboard";
 import { ThinkingOrb } from "thinking-orbs";
 import { runGenerate, runSuggest } from "../api";
 import { NOTE_TAGS, uid, updateFrame, type Frame, type NoteItem, type NoteTag } from "../store";
@@ -131,7 +132,7 @@ function NoteText({ text, onChange }: { text: string; onChange: (t: string) => v
   const [value, setValue] = useState(text);
   if (!editing)
     return (
-      <span className="note-text" onClick={() => (setValue(text), setEditing(true))}>
+      <span className="note-text" onClick={() => (primeKeyboard(), setValue(text), setEditing(true))}>
         {text}
       </span>
     );
@@ -208,6 +209,8 @@ export function AddNote({
   const [listening, setListening] = useState(false);
   const [error, setError] = useState("");
   const rec = useRef<Recognition | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => (input.current ? keyboardOnPencilTap(input.current) : undefined), []);
 
   const toggleMic = () => {
     if (!SpeechRecognitionCtor) return;
@@ -266,6 +269,7 @@ export function AddNote({
         }}
       >
         <input
+          ref={input}
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={listening ? "Listening…" : placeholder}
