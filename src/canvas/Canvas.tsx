@@ -21,6 +21,7 @@ import { FrameView } from "./FrameView";
 import { strokePath } from "./ink";
 import { NoteComposer, type NoteTarget } from "./NoteComposer";
 import { pickInFrame } from "./pick";
+import { runGenerate, runSuggest } from "../api";
 
 export type Tool = "select" | "pen" | "eraser" | "frame";
 type Camera = { x: number; y: number; z: number };
@@ -47,7 +48,12 @@ export function Canvas(props: {
   const { tool, device } = props;
   const surfaceId = useStore((s) => s.surfaceId);
   const allFrames = useStore((s) => s.project.frames);
-  const frames = useMemo(() => framesOn(allFrames, surfaceId), [allFrames, surfaceId]);
+  const focusId = useStore((s) => s.focusId);
+  // In the focused drawing view only that frame is on the canvas.
+  const frames = useMemo(
+    () => (focusId ? allFrames.filter((f) => f.id === focusId) : framesOn(allFrames, surfaceId)),
+    [allFrames, surfaceId, focusId],
+  );
   const selectedId = useStore((s) => s.selectedId);
   const key = surfaceId ?? "overview";
   const rootRef = useRef<HTMLDivElement>(null);
@@ -62,6 +68,9 @@ export function Canvas(props: {
   const [noteTarget, setNoteTarget] = useState<NoteTarget | null>(null);
   const [pressAt, setPressAt] = useState<{ x: number; y: number } | null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout>>();
+  // Until a Pencil shows up, a single finger uses the tool (phones); after that fingers only pan and zoom.
+  const penSeen = useRef(false);
+  const beforeFocus = useRef<Camera | null>(null);
   const flight = useRef<gsap.core.Tween>();
 
   /** Glides the camera to a new position. */
@@ -70,20 +79,57 @@ export function Canvas(props: {
     const from = { ...camRef.current };
     flight.current = gsap.to(from, { ...to, duration: 0.6, ease: "power3.inOut", onUpdate: () => setCam({ ...from }) });
   };
-  /** Zooms so a frame (and its note card, when there's room) fills the screen, big enough to draw on. */
-  const focusFrame = (f: Frame) => {
+  /** Camera that makes a frame fill the screen in the focused view (with its notes beside it when there's room). */
+  const fitFocus = (f: Frame): Camera | null => {
     const el = rootRef.current;
-    if (!el) return;
+    if (!el) return null;
     const W = el.clientWidth;
     const H = el.clientHeight;
-    const top = 76; // below the top bar
-    const bottom = 170; // room for the frame's buttons above the toolbar
-    const withCard = W > 700;
+    const top = 52 + 64; // top bar plus the focus bar
+    const bottom = 96; // the toolbar
+    const withCard = W >= 900;
     const span = f.w + (withCard ? 32 + 320 : 0);
-    const z = clampZ(Math.min(1.6, (H - top - bottom) / f.h, (W - 48) / span));
-    setNoteTarget(null);
-    flyTo({ z, x: (W - span * z) / 2 - f.x * z, y: top - f.y * z });
+    const z = clampZ(Math.min(2.5, (H - top - bottom) / f.h, (W - 32) / span));
+    return { z, x: (W - span * z) / 2 - f.x * z, y: top + (H - top - bottom - f.h * z) / 2 - f.y * z };
   };
+  /** Opens the focused drawing view on a frame. */
+  const enterFocus = (f: Frame) => {
+    const to = fitFocus(f);
+    if (!to) return;
+    if (!getState().focusId) beforeFocus.current = { ...camRef.current };
+    setNoteTarget(null);
+    set({ focusId: f.id, selectedId: f.id });
+    flyTo(to);
+  };
+  // Back on the canvas, the frame stays in view with its buttons clear of the toolbar, no closer than before.
+  const exitFocus = () => {
+    const f = getState().project.frames.find((x) => x.id === getState().focusId);
+    const el = rootRef.current;
+    set({ focusId: null });
+    setNoteTarget(null);
+    const prev = beforeFocus.current;
+    beforeFocus.current = null;
+    if (!f || !el) return prev && flyTo(prev);
+    const W = el.clientWidth;
+    const H = el.clientHeight;
+    const top = 52 + 24;
+    const bottom = 180; // the frame's buttons plus the toolbar
+    const z = clampZ(Math.min(prev?.z ?? 1, (H - top - bottom) / f.h, (W - 32) / f.w));
+    flyTo({ z, x: (W - f.w * z) / 2 - f.x * z, y: top + (H - top - bottom - f.h * z) / 2 - f.y * z });
+  };
+  // Leave the focused view if its frame is deleted (or undone away); refit when the screen turns.
+  useEffect(() => {
+    if (focusId && !allFrames.some((f) => f.id === focusId)) exitFocus();
+  }, [focusId, allFrames]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const refit = () => {
+      const f = getState().project.frames.find((x) => x.id === getState().focusId);
+      const to = f && fitFocus(f);
+      if (to) flyTo(to);
+    };
+    window.addEventListener("resize", refit);
+    return () => window.removeEventListener("resize", refit);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Zoom out to show every frame on this canvas (after variations are added).
   useEffect(() => {
     const fit = () => {
@@ -102,7 +148,7 @@ export function Canvas(props: {
     // "Draw" on a frame: zoom in so it fills the screen.
     const focus = (e: Event) => {
       const f = getState().project.frames.find((x) => x.id === (e as CustomEvent<string>).detail);
-      if (f) focusFrame(f);
+      if (f) enterFocus(f);
     };
     window.addEventListener("cotg:fit-all", fit);
     window.addEventListener("cotg:focus", focus);
@@ -160,13 +206,23 @@ export function Canvas(props: {
 
   function onPointerDown(e: React.PointerEvent) {
     if ((e.target as HTMLElement).closest("[data-ui]")) return;
+    if (e.pointerType === "pen") penSeen.current = true;
+    const isTouch = e.pointerType === "touch";
     // Palm rejection: while the Pencil is drawing, ignore touches.
     const busyPen = gesture.current && ["draw", "erase", "frame", "move"].includes(gesture.current.type);
-    if (e.pointerType === "touch" && busyPen) return;
+    if (isTouch && busyPen && penSeen.current) return;
+    // No Pencil (a phone): a second finger turns a finger stroke into a pinch.
+    if (isTouch && busyPen) {
+      cancelHold();
+      gesture.current = null;
+      setLive(null);
+    }
     rootRef.current!.setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
-    const isTouch = e.pointerType === "touch";
-    const isPan = isTouch || e.button === 1 || (e.pointerType === "mouse" && e.button === 0 && spaceDown.current);
+    const touchCount = [...pointers.current.values()].filter((p) => p.type === "touch").length;
+    const fingerTool = isTouch && !penSeen.current && touchCount === 1 && tool !== "select";
+    const isPan =
+      (isTouch && !fingerTool) || e.button === 1 || (e.pointerType === "mouse" && e.button === 0 && spaceDown.current);
 
     if (isPan) {
       const touches = [...pointers.current.values()].filter((p) => p.type === "touch");
@@ -194,6 +250,7 @@ export function Canvas(props: {
       // Draw freely: a stroke near a frame belongs to it, even past its edge; on empty canvas it starts a new frame.
       const owner =
         hit ??
+        (focusId ? frames[0] : undefined) ?? // in the focused view every stroke belongs to that frame
         frames.find(
           (f) => w.x > f.x - NEAR && w.x < f.x + f.w + NEAR && w.y > f.y - NEAR && w.y < f.y + f.h + NEAR,
         );
@@ -391,7 +448,7 @@ export function Canvas(props: {
       surfaceId: surfaceId ?? undefined,
     });
     set({ selectedId: f.id });
-    focusFrame(f); // zoom in so the new frame is big enough to draw on
+    enterFocus(f); // open the focused drawing view on the new frame
   }
 
   // Mouse and trackpad: scroll pans, pinch or ctrl+scroll zooms.
@@ -410,6 +467,7 @@ export function Canvas(props: {
   const spaceDown = useRef(false);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && getState().focusId && !isTyping(e)) exitFocus();
       if (e.code === "Space" && !isTyping(e)) spaceDown.current = true;
       if ((e.key === "Backspace" || e.key === "Delete") && !isTyping(e)) {
         const id = getState().selectedId;
@@ -454,6 +512,7 @@ export function Canvas(props: {
             inSurface={!!surfaceId}
             zoom={cam.z}
             onPlay={() => props.onPlay(f.id)}
+            focused={f.id === focusId}
           />
         ))}
         {live?.type === "draw" && !live.frameId && (
@@ -497,6 +556,7 @@ export function Canvas(props: {
           />
         )}
       </div>
+      {focusId && frames[0] && <FocusBar frame={frames[0]} onDone={exitFocus} />}
       {frames.length === 0 && (
         <div className="empty-hint">
           {surfaceId
@@ -513,3 +573,31 @@ const isTyping = (e: KeyboardEvent) => {
   const t = e.target as HTMLElement;
   return t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable;
 };
+
+/** The bar above a frame in the focused drawing view: back to the canvas, and the next step. */
+function FocusBar({ frame: f, onDone }: { frame: Frame; onDone: () => void }) {
+  const sketched = f.strokes.some((s) => s.kind === "sketch");
+  const marked = f.strokes.some((s) => s.kind === "markup");
+  const accepted = f.notes.filter((n) => n.status === "accepted").length;
+  return (
+    <div className="focus-bar" data-ui>
+      <button className="btn" onClick={onDone}>
+        ← Done
+      </button>
+      <span className="focus-title">
+        {f.name || (f.primary ? "Untitled surface" : "Variation")}
+        <span className="muted"> · {DEVICES[f.device].label}</span>
+      </span>
+      {!f.code && (
+        <button className="btn" disabled={!!f.busy || !sketched} onClick={() => runSuggest(f.id)}>
+          ✓ Suggest notes
+        </button>
+      )}
+      {(accepted > 0 || marked || (!f.code && sketched)) && (
+        <button className="btn ink" disabled={!!f.busy} onClick={() => runGenerate(f.id)}>
+          {f.code ? "Rebuild" : "Generate"}
+        </button>
+      )}
+    </div>
+  );
+}

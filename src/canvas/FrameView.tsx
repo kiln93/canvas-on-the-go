@@ -13,6 +13,8 @@ export const FrameView = memo(function FrameView(props: {
   inSurface: boolean;
   zoom: number;
   onPlay: () => void;
+  /** Open in the focused drawing view: the canvas's focus bar replaces the buttons under the frame. */
+  focused?: boolean;
 }) {
   const { frame: f, selected, inSurface } = props;
   const html = useMemo(() => (f.code ? frameHtml(f.code) : ""), [f.code]);
@@ -119,6 +121,7 @@ export const FrameView = memo(function FrameView(props: {
       </div>
       {f.busy && <FrameBeam frame={f} />}
 
+      {!props.focused && (
       <div
         data-ui
         className="frame-actions"
@@ -231,6 +234,17 @@ export const FrameView = memo(function FrameView(props: {
           </div>
         )}
       </div>
+      )}
+      {props.focused && f.error && (
+        <div data-ui className="frame-actions" style={{ left: f.x, top: f.y + f.h + 12 * ui, transform: `scale(${ui})` }}>
+          <div className="frame-error" role="alert">
+            {f.error}
+            <button className="link" onClick={() => updateFrame(f.id, { error: undefined })}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {(hasNotes || (!f.code && sketch.length > 0)) && (
         <>
