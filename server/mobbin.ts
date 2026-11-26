@@ -317,21 +317,43 @@ export async function mobbin(req: MobbinRequest) {
   }
 }
 
-/** Fetches a reference image at build time (never stored), as base64 for Claude. Null if it can't. */
-export async function fetchImage(url: string): Promise<{ data: string; type: "image/png" | "image/jpeg" | "image/webp" | "image/gif" } | null> {
+type ImageType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+
+/** Which image format the bytes are, whatever the server's content-type says. */
+function sniff(b: Uint8Array): ImageType | null {
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return "image/png";
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg";
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return "image/gif";
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return "image/webp";
+  return null;
+}
+
+// Claude takes images up to 5 MB once base64-encoded.
+const MAX_IMAGE_BYTES = 3_700_000;
+
+/**
+ * Fetches a reference image at build time (never stored), as base64 for Claude.
+ * When it can't, says why in plain words, so the designer learns the build went without it.
+ */
+export async function fetchImage(url: string): Promise<{ data: string; type: ImageType } | { error: string }> {
   try {
     if (url.startsWith("data:")) {
       const m = /^data:(image\/(png|jpeg|webp|gif));base64,(.+)$/.exec(url);
-      return m ? { data: m[3], type: m[1] as "image/png" } : null;
+      return m ? { data: m[3], type: m[1] as ImageType } : { error: "it isn't a PNG, JPEG, WebP or GIF" };
     }
-    if (!url.startsWith("https://")) return null;
-    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    const type = (r.headers.get("content-type") ?? "").split(";")[0];
-    if (!r.ok || !/^image\/(png|jpeg|webp|gif)$/.test(type)) return null;
-    const buf = await r.arrayBuffer();
-    if (buf.byteLength > 4_500_000) return null;
-    return { data: Buffer.from(buf).toString("base64"), type: type as "image/png" };
-  } catch {
-    return null;
+    if (!url.startsWith("https://")) return { error: "its address isn't secure (https)" };
+    // Ask for formats Claude reads, so an image CDN doesn't answer with AVIF.
+    const r = await fetch(url, {
+      signal: AbortSignal.timeout(10000),
+      headers: { accept: "image/webp,image/png,image/jpeg;q=0.9,image/*;q=0.5" },
+    });
+    if (!r.ok) return { error: `the image server answered ${r.status}` };
+    const buf = new Uint8Array(await r.arrayBuffer());
+    const type = sniff(buf);
+    if (!type) return { error: `it came back as ${(r.headers.get("content-type") ?? "an unknown type").split(";")[0]}, which Claude can't read` };
+    if (buf.byteLength > MAX_IMAGE_BYTES) return { error: `it's too large (${(buf.byteLength / 1e6).toFixed(1)} MB)` };
+    return { data: Buffer.from(buf).toString("base64"), type };
+  } catch (e) {
+    return { error: (e as Error).name === "TimeoutError" ? "it took too long to load" : "it couldn't be downloaded" };
   }
 }

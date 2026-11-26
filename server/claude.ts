@@ -272,19 +272,23 @@ async function generateOnce(
     content.push({ type: "text", text: "Style reference (match its look, not its content):" });
     content.push(image(req.styleRef, "image/jpeg"));
   }
-  // Mobbin references are links: fetch each image now, for this build only. One that won't load is skipped.
+  // Mobbin references are links: fetch each image now, for this build only. One that won't load is
+  // skipped, and the build says which and why.
   const refs = await Promise.all(
-    (req.refs ?? []).slice(0, MAX_REFS).map(async (r) =>
-      r.data ? { note: r.note, data: r.data, type: "image/jpeg" as const } : r.url ? { note: r.note, ...(await fetchImage(r.url)) } : null,
-    ),
+    (req.refs ?? []).slice(0, MAX_REFS).map(async (r, i) => {
+      const got = r.data ? { data: r.data, type: "image/jpeg" as const } : r.url ? await fetchImage(r.url) : { error: "it has no image" };
+      return { n: i + 1, note: r.note.trim(), ...got };
+    }),
   );
-  refs
-    .filter((r): r is { note: string; data: string; type: "image/jpeg" } => !!r?.data)
-    .forEach((r, i) => {
-      const what = r.note.trim() ? `take this from it: ${r.note.trim()}` : "take what fits this screen";
-      content.push({ type: "text", text: `Reference ${i + 1} for this screen (${what}):` });
-      content.push(image(r.data, r.type));
-    });
+  const refsSkipped = refs.flatMap((r) => ("error" in r ? [`Reference ${r.n} wasn't used: ${r.error}.`] : []));
+  const loaded = refs.filter((r): r is { n: number; note: string; data: string; type: "image/jpeg" } => "data" in r);
+  loaded.forEach((r, i) => {
+    const what = r.note
+      ? `take this from it: ${r.note}`
+      : "nothing named, so match its layout, hierarchy, spacing, type and how its components look";
+    content.push({ type: "text", text: `Reference ${i + 1} for this screen (${what}):` });
+    content.push(image(r.data, r.type));
+  });
   if (req.image) content.push(image(req.image));
   content.push({
     type: "text",
@@ -301,6 +305,11 @@ async function generateOnce(
             req.previousCode ? "; previousCode does not have it yet" : ""
           }:\n${req.notes.map((n, i) => `${i + 1}. ${n}`).join("\n")}`
         : "No notes.",
+      loaded.length
+        ? `References: ${loaded.length} image${loaded.length > 1 ? "s" : ""} attached above. They are change requests like notes: the screen must visibly take from each one what its caption names, rebuilt in this app's content and tint (never the reference app's brand, logos or copy).${
+            req.refsNew && req.previousCode ? " They are new or changed since the last build, and the designer rebuilt to see them applied." : ""
+          }`
+        : "",
       req.instruction ? `Instruction: ${req.instruction}` : "",
       req.previousCode ? `previousCode:\n${req.previousCode}` : "",
       asEdits ? EDIT_RULES : "",
@@ -339,10 +348,10 @@ async function generateOnce(
     const out = jsonText(msg) as { title: string; summary: string; edits: { find: string; replace: string }[]; notes_done: Done; also_changed?: string };
     const code = applyEdits(req.previousCode ?? "", out.edits);
     if (code == null) return null;
-    return { title: out.title, summary: out.summary, code, notesDone: notesDone(out.notes_done), alsoChanged: out.also_changed?.trim() || undefined, usage: usageOf(msg) };
+    return { title: out.title, summary: out.summary, code, notesDone: notesDone(out.notes_done), alsoChanged: out.also_changed?.trim() || undefined, refsSkipped, usage: usageOf(msg) };
   }
   const out = jsonText(msg) as { title: string; summary: string; code: string; notes_done: Done; also_changed?: string };
-  return { title: out.title, summary: out.summary, code: out.code, notesDone: notesDone(out.notes_done), alsoChanged: out.also_changed?.trim() || undefined, usage: usageOf(msg) };
+  return { title: out.title, summary: out.summary, code: out.code, notesDone: notesDone(out.notes_done), alsoChanged: out.also_changed?.trim() || undefined, refsSkipped, usage: usageOf(msg) };
 }
 
 const reviewSchema = {

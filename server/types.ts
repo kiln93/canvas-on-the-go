@@ -53,6 +53,7 @@ export type GenerateRequest = {
   job?: string; // the screen's one-line job
   assumed?: string; // Claude's stated reading of the sketch, which the designer saw
   otherScreens?: string[]; // names of the project's other screens
+  refsNew?: boolean; // the references changed since the last build
 };
 
 export type GenerateResponse = {
@@ -63,6 +64,8 @@ export type GenerateResponse = {
   notesDone?: { note: number; done: boolean; change: string }[];
   /** Anything changed that no note or markup asked for; ideally empty. */
   alsoChanged?: string;
+  /** References the build couldn't load, each with why. */
+  refsSkipped?: string[];
   usage: Usage;
 };
 
