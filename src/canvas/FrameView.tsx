@@ -13,6 +13,8 @@ export const FrameView = memo(function FrameView(props: {
   inSurface: boolean;
   zoom: number;
   onPlay: () => void;
+  /** Open in the focused drawing view: the canvas's focus bar replaces the buttons under the frame. */
+  focused?: boolean;
 }) {
   const { frame: f, selected, inSurface } = props;
   const html = useMemo(() => (f.code ? frameHtml(f.code) : ""), [f.code]);
@@ -103,7 +105,9 @@ export const FrameView = memo(function FrameView(props: {
                 <b>{i + 1}</b>
               </div>
             ))}
-        {f.busy === "generating" && progress?.phase === "writing" && <FrameMosaic w={f.w} h={f.h} />}
+        {f.busy === "generating" && (progress?.phase === "writing" || progress?.phase === "fixing") && (
+          <FrameMosaic w={f.w} h={f.h} />
+        )}
         {revealing && (
           <RevealWave onDone={() => setProgress(f.id, undefined)}>
             <div className="frame-wave-view">{sketchLayer(false)}</div>
@@ -117,6 +121,7 @@ export const FrameView = memo(function FrameView(props: {
       </div>
       {f.busy && <FrameBeam frame={f} />}
 
+      {!props.focused && (
       <div
         data-ui
         className="frame-actions"
@@ -205,8 +210,41 @@ export const FrameView = memo(function FrameView(props: {
             </button>
           </div>
         )}
-        {f.summary && f.code && !f.error && <div className="frame-summary">{f.summary}</div>}
+        {f.summary && f.code && !f.error && (
+          <div className="frame-summary">
+            {f.summary}
+            {f.review && (
+              <details className="review">
+                <summary>
+                  {f.review.verdict === "fix"
+                    ? `Reviewed: fixed ${f.review.findings.length} thing${f.review.findings.length === 1 ? "" : "s"}`
+                    : f.review.verdict === "ship"
+                      ? "Reviewed: nothing to fix"
+                      : "Review didn't finish; this is the first build"}
+                </summary>
+                {f.review.findings.length > 0 && (
+                  <ul>
+                    {f.review.findings.map((x, i) => (
+                      <li key={i}>{x}</li>
+                    ))}
+                  </ul>
+                )}
+              </details>
+            )}
+          </div>
+        )}
       </div>
+      )}
+      {props.focused && f.error && (
+        <div data-ui className="frame-actions" style={{ left: f.x, top: f.y + f.h + 12 * ui, transform: `scale(${ui})` }}>
+          <div className="frame-error" role="alert">
+            {f.error}
+            <button className="link" onClick={() => updateFrame(f.id, { error: undefined })}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {(hasNotes || (!f.code && sketch.length > 0)) && (
         <>

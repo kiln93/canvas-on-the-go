@@ -175,6 +175,18 @@ input, textarea { -webkit-user-select: text; user-select: text; }
   background: var(--surface); border: 1px solid var(--markup); border-radius: var(--r-card);
   color: var(--ink); font-size: 14px; line-height: 1.45;
 }
+/* Focused drawing view: one frame fills the screen, this bar sits under the top bar */
+.focus-bar {
+  position: absolute; z-index: 11; left: 50%; transform: translate3d(-50%, 0, 0);
+  top: calc(60px + env(safe-area-inset-top)); max-width: calc(100% - 32px);
+  display: flex; align-items: center; gap: 8px; padding: 6px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card);
+}
+.focus-bar .btn { height: 36px; white-space: nowrap; flex-shrink: 0; }
+.focus-title { padding: 0 8px; font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+@media (max-width: 500px) {
+  .focus-title { display: none; }
+}
 .key-banner code { font-size: 12px; background: #f0ede7; padding: 1px 4px; border-radius: 4px; }
 .crumbs { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .crumb { background: none; border: 0; padding: 4px 6px; border-radius: var(--r-btn); color: var(--icon); font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
@@ -283,3 +295,8 @@ button.tag { cursor: pointer; }
 .tag.on { background: var(--ink); border-color: var(--ink); color: var(--canvas); }
 .note .tag { margin-top: 0; }
 .add-note { margin-top: 8px; }
+
+.review { margin-top: 6px; }
+.review summary { cursor: pointer; color: var(--accent); font-weight: 500; list-style: none; }
+.review summary::-webkit-details-marker { display: none; }
+.review ul { margin: 6px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }

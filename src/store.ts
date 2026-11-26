@@ -50,6 +50,8 @@ export type Frame = {
   showSketch: boolean;
   busy?: "suggesting" | "generating" | "planning";
   error?: string;
+  /** What the review pass found and fixed in the latest build. */
+  review?: { verdict: "ship" | "fix" | "skipped"; findings: string[]; at: number };
   /** Set on a surface's primary frame once its variations have been planned, so it happens once. */
   variationsPlanned?: boolean;
 };
@@ -66,6 +68,8 @@ type State = {
   surfaceId: string | null; // null = overview canvas
   selectedId: string | null;
   tutorialDone: boolean;
+  /** The frame open in the focused drawing view, if any. Never restored on reload. */
+  focusId: string | null;
 };
 
 const KEY = "cotg.v1";
@@ -77,6 +81,7 @@ function load(): State {
     surfaceId: null,
     selectedId: null,
     tutorialDone: false,
+    focusId: null,
   };
   try {
     const raw = localStorage.getItem(KEY);
@@ -88,7 +93,7 @@ function load(): State {
       f.error = undefined;
     });
     if (saved.project.spend.month !== month()) saved.project.spend = { month: month(), cost: 0 };
-    return { ...empty, ...saved, selectedId: null };
+    return { ...empty, ...saved, selectedId: null, focusId: null };
   } catch {
     return empty;
   }
