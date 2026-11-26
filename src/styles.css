@@ -392,6 +392,8 @@ button.tag { cursor: pointer; }
 .ref-row img { width: 44px; height: 56px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); flex-shrink: 0; }
 .ref-row input { flex: 1; min-width: 0; height: 40px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--r-input); background: #fff; font-size: 14px; outline: none; }
 .ref-row input:focus { border-color: var(--accent); }
+.refs-hint { margin: 0; }
+.ref-row.suggested img { border: 2px solid var(--accent); }
 .ref-adds { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .ref-add { font: inherit; background: none; display: flex; align-items: center; justify-content: center; min-height: 44px; border: 1px dashed var(--border); border-radius: var(--r-input); color: var(--icon); font-weight: 500; cursor: pointer; }
 .ref-add:active { background: rgba(39, 37, 30, 0.04); }

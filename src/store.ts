@@ -35,7 +35,16 @@ export type NoteItem = Suggestion & {
 
 export type Version = { code: string; summary: string; at: number };
 /** A reference: an uploaded image (data), or a Mobbin screen kept as a link only (url + link), per Mobbin's terms. */
-export type ScreenRef = { id: string; data?: string; url?: string; link?: string; title?: string; note: string };
+export type ScreenRef = {
+  id: string;
+  data?: string;
+  url?: string;
+  link?: string;
+  title?: string;
+  note: string;
+  /** Picked automatically from Mobbin; the designer can remove or replace it. */
+  suggested?: boolean;
+};
 
 export type Frame = {
   id: string;
@@ -62,6 +71,8 @@ export type Frame = {
   variationsPlanned?: boolean;
   /** Reference images for this screen (base64 JPEG), each with what to take from it. Sent with every build. */
   refs?: ScreenRef[];
+  /** References were already suggested once for this screen, so removing them sticks. */
+  refsSuggested?: boolean;
   /** Variations Claude suggested for this screen, waiting for the designer to pick which to build. */
   variationPlan?: { name: string; instruction: string }[];
 };

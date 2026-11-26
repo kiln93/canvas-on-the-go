@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ThinkingOrb } from "thinking-orbs";
 import { connectMobbin, disconnectMobbin, mobbinConnected, searchMobbin } from "../mobbin";
-import { set, uid, updateFrame, useStore } from "../store";
+import type { Frame } from "../store";
+import { getState, set, uid, updateFrame, useStore } from "../store";
 import type { MobbinScreen } from "../../server/mobbin";
 
 export const MAX_REFS = 4;
@@ -32,7 +33,8 @@ export function MobbinPicker() {
   }, [frameId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!f) return null;
-  const room = MAX_REFS - (f.refs?.length ?? 0);
+  // Suggested references make way for ones the designer picks.
+  const room = MAX_REFS - (f.refs ?? []).filter((r) => !r.suggested).length;
   const close = () => set({ mobbinFor: null, mobbinNotice: undefined });
 
   const run = async () => {
@@ -58,8 +60,9 @@ export function MobbinPicker() {
     const chosen = (results ?? []).filter((r) => picked.includes(r.image));
     updateFrame(f.id, (cur) => ({
       refs: [
-        ...(cur.refs ?? []),
+        ...(cur.refs ?? []).filter((r) => !r.suggested),
         ...chosen.map((r) => ({ id: uid(), url: r.image, link: r.link, title: r.title, note: "" })),
+        ...(cur.refs ?? []).filter((r) => r.suggested && !chosen.some((c) => c.image === r.url)),
       ].slice(0, MAX_REFS),
     }));
     close();
@@ -183,3 +186,41 @@ export function MobbinPicker() {
 
 /** Opens the picker for a frame. */
 export const openMobbin = (frameId: string) => set({ mobbinFor: frameId, mobbinNotice: undefined });
+
+const SUGGEST = 3;
+
+/** What to search Mobbin for: the screen's name plus the start of the project brief. */
+export function suggestQuery(f: Frame, brief: string) {
+  const name = f.name && !/^untitled/i.test(f.name) ? f.name.trim() : "";
+  const about = brief.trim().split(/\s+/).slice(0, 8).join(" ");
+  const seen = new Set<string>();
+  const words = `${name} ${about}`.split(/\s+/).filter((w) => w && !seen.has(w.toLowerCase()) && seen.add(w.toLowerCase()));
+  return words.join(" ").slice(0, 80);
+}
+
+/**
+ * Fills an empty References list with the top Mobbin results for this screen, once per screen.
+ * Free (no AI call). Returns an error message to show, or "" when nothing went wrong.
+ */
+export async function suggestRefs(frameId: string): Promise<string> {
+  const { project } = getState();
+  const f = project.frames.find((x) => x.id === frameId);
+  if (!f || f.refsSuggested || f.refs?.length || !mobbinConnected()) return "";
+  const query = suggestQuery(f, project.brief);
+  if (!query) return "";
+  updateFrame(frameId, () => ({ refsSuggested: true }));
+  try {
+    const { screens } = await searchMobbin(query, "screens");
+    const top = screens.slice(0, SUGGEST);
+    updateFrame(frameId, (cur) => ({
+      refs: [
+        ...(cur.refs ?? []),
+        ...top.map((r) => ({ id: uid(), url: r.image, link: r.link, title: r.title, note: "", suggested: true })),
+      ].slice(0, MAX_REFS),
+    }));
+    return top.length ? "" : "Mobbin found nothing for this screen yet. Name the screen, then tap Find on Mobbin.";
+  } catch (e) {
+    updateFrame(frameId, () => ({ refsSuggested: false }));
+    return `Couldn't suggest references: ${(e as Error).message}`;
+  }
+}
