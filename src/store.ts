@@ -50,6 +50,8 @@ export type Frame = {
   showSketch: boolean;
   busy?: "suggesting" | "generating" | "planning";
   error?: string;
+  /** What the review pass found and fixed in the latest build. */
+  review?: { verdict: "ship" | "fix" | "skipped"; findings: string[]; at: number };
   /** Set on a surface's primary frame once its variations have been planned, so it happens once. */
   variationsPlanned?: boolean;
 };

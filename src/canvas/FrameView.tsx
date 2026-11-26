@@ -103,7 +103,9 @@ export const FrameView = memo(function FrameView(props: {
                 <b>{i + 1}</b>
               </div>
             ))}
-        {f.busy === "generating" && progress?.phase === "writing" && <FrameMosaic w={f.w} h={f.h} />}
+        {f.busy === "generating" && (progress?.phase === "writing" || progress?.phase === "fixing") && (
+          <FrameMosaic w={f.w} h={f.h} />
+        )}
         {revealing && (
           <RevealWave onDone={() => setProgress(f.id, undefined)}>
             <div className="frame-wave-view">{sketchLayer(false)}</div>
@@ -205,7 +207,29 @@ export const FrameView = memo(function FrameView(props: {
             </button>
           </div>
         )}
-        {f.summary && f.code && !f.error && <div className="frame-summary">{f.summary}</div>}
+        {f.summary && f.code && !f.error && (
+          <div className="frame-summary">
+            {f.summary}
+            {f.review && (
+              <details className="review">
+                <summary>
+                  {f.review.verdict === "fix"
+                    ? `Reviewed: fixed ${f.review.findings.length} thing${f.review.findings.length === 1 ? "" : "s"}`
+                    : f.review.verdict === "ship"
+                      ? "Reviewed: nothing to fix"
+                      : "Review didn't finish; this is the first build"}
+                </summary>
+                {f.review.findings.length > 0 && (
+                  <ul>
+                    {f.review.findings.map((x, i) => (
+                      <li key={i}>{x}</li>
+                    ))}
+                  </ul>
+                )}
+              </details>
+            )}
+          </div>
+        )}
       </div>
 
       {(hasNotes || (!f.code && sketch.length > 0)) && (

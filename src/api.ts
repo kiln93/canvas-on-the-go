@@ -2,7 +2,9 @@ import type {
   ApiError,
   GenerateRequest,
   GenerateResponse,
-  GenerateStreamLine,
+  ReviewRequest,
+  ReviewResponse,
+  StreamLine,
   ImportRequest,
   ImportResponse,
   SuggestRequest,
@@ -16,7 +18,7 @@ import { addFrame, addSpend, DEVICES, getState, NOTE_TAGS, updateFrame, type Fra
 
 // Live progress for frames that are busy. Kept out of the saved project: it's only true right now.
 export type FrameProgress = {
-  phase: "reading" | "planning" | "thinking" | "writing" | "rendering";
+  phase: "reading" | "planning" | "thinking" | "writing" | "reviewing" | "fixing" | "rendering";
   startedAt: number;
   /** 0..1 when there is a real measure of how far along it is. */
   fraction?: number;
@@ -102,11 +104,11 @@ export async function runSuggest(id: string) {
   setProgress(id, undefined);
 }
 
-/** Reads a newline-delimited JSON stream from /api/generate, reporting progress as it goes. */
-async function postStream(body: GenerateRequest, onLine: (l: GenerateStreamLine) => void): Promise<GenerateResponse> {
+/** Reads a newline-delimited JSON stream (/api/generate, /api/review), reporting progress as it goes. */
+async function postStream<T>(path: string, body: unknown, onLine: (l: StreamLine<T>) => void): Promise<T> {
   let res: Response;
   try {
-    res = await fetch("/api/generate", {
+    res = await fetch(path, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -128,7 +130,7 @@ async function postStream(body: GenerateRequest, onLine: (l: GenerateStreamLine)
       const line = buf.slice(0, nl).trim();
       buf = buf.slice(nl + 1);
       if (!line) continue;
-      const msg = JSON.parse(line) as GenerateStreamLine;
+      const msg = JSON.parse(line) as StreamLine<T>;
       if (msg.type === "done") return msg.result;
       if (msg.type === "error") throw new Error(msg.error);
       onLine(msg);
@@ -181,15 +183,50 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
       instruction,
       designSystem: "shadcn",
     };
-    const out = await postStream(req, (l) => {
+    // Building fills the first 60% of the bar; the review and its fixes the rest.
+    const built = await postStream<GenerateResponse>("/api/generate", req, (l) => {
       if (l.type !== "progress") return;
       setProgress(id, {
         phase: l.phase,
         startedAt,
-        fraction: l.phase === "writing" ? Math.min(0.95, l.chars / expected) : undefined,
+        fraction: l.phase === "writing" ? 0.6 * Math.min(1, l.chars / expected) : undefined,
       });
     });
-    addSpend(out.usage);
+    addSpend(built.usage);
+    let out = { ...built, review: undefined as Frame["review"] };
+
+    // A fresh look against the design skills, fixing what fails. If it can't finish, keep the build.
+    setProgress(id, { phase: "reviewing", startedAt, fraction: 0.62 });
+    try {
+      const reviewReq: ReviewRequest = {
+        brief: req.brief,
+        surfaceName: req.surfaceName,
+        device: req.device,
+        width: req.width,
+        height: req.height,
+        image: req.image,
+        notes: req.notes,
+        instruction: req.instruction,
+        code: built.code,
+      };
+      const rev = await postStream<ReviewResponse>("/api/review", reviewReq, (l) => {
+        if (l.type !== "progress") return;
+        setProgress(id, {
+          phase: l.phase === "fixing" && l.chars > 400 ? "fixing" : "reviewing",
+          startedAt,
+          fraction: 0.62 + 0.36 * Math.min(1, l.chars / (built.code.length * 1.1 + 800)),
+        });
+      });
+      addSpend(rev.usage);
+      out = {
+        ...out,
+        code: rev.verdict === "fix" ? rev.code : built.code,
+        review: { verdict: rev.verdict, findings: rev.findings, at: Date.now() },
+      };
+    } catch (e) {
+      out = { ...out, review: { verdict: "skipped", findings: [(e as Error).message], at: Date.now() } };
+    }
+
     // The frame shows "rendering" until its iframe reports it has drawn the screen.
     setProgress(id, { phase: "rendering", startedAt, fraction: 1 });
     updateFrame(
@@ -198,6 +235,7 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
         busy: undefined,
         code: out.code,
         summary: out.summary,
+        review: out.review,
         name: cur.name || out.title,
         approved: false,
         showSketch: false, // the sketch did its job; "Show sketch" brings it back
