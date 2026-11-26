@@ -147,6 +147,19 @@ function expectedChars(f: Frame, previousCode?: string) {
   return f.device === "desktop" ? 16000 : f.device === "ipad" ? 13000 : 10000;
 }
 
+/** A fingerprint of a frame's references and captions. */
+export const refsKey = (f: Frame) => (f.refs ?? []).map((r) => `${r.url ?? r.data?.slice(0, 32)}|${r.note.trim()}`).join("\n");
+
+/** What a build would take in right now, so buttons only offer a build that can run. */
+export function buildInputs(f: Frame) {
+  const notes = f.notes.filter((n) => n.status === "accepted").length;
+  const markups = f.strokes.some((s) => s.kind === "markup");
+  const sketch = !f.code && f.strokes.some((s) => s.kind === "sketch");
+  const refs = !!f.refs?.length && refsKey(f) !== (f.refsBuilt ?? "");
+  return { notes, markups, sketch, refs, any: notes > 0 || markups || sketch || refs };
+}
+export const NOTHING_TO_BUILD = "Add a note, mark up the screen, or change a reference, then rebuild.";
+
 /** Builds (or rebuilds) the live screen from the sketch, notes and any markups. */
 export async function runGenerate(id: string, instruction?: string, baseCode?: string) {
   const f = frame(id);
@@ -163,9 +176,14 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
         : "";
       return `${tag ? `[${tag}] ` : ""}${n.text}${where}`;
     });
-  if (!image && !notes.length && !instruction) {
-    return updateFrame(id, { error: "Draw in the frame or add a note first." });
+  // New or changed references are reason enough to rebuild.
+  const refsChanged = buildInputs(f).refs;
+  if (!image && !notes.length && !instruction && refsChanged && f.code)
+    instruction = "Rework this screen to take from the attached references what each one is marked for. Keep the screen's purpose and content.";
+  if (!image && !notes.length && !instruction && !(refsChanged && !f.code)) {
+    return updateFrame(id, { error: f.code ? NOTHING_TO_BUILD : "Draw in the frame or add a note first." });
   }
+  const builtRefs = refsKey(f);
   updateFrame(id, { busy: "generating", error: undefined });
   const startedAt = Date.now();
   setProgress(id, { phase: "thinking", startedAt });
@@ -254,6 +272,7 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
         // Markups have been applied, so clear them; the sketch stays until you approve.
         strokes: cur.code ? cur.strokes.filter((s) => s.kind !== "markup") : cur.strokes,
         versions: [...cur.versions, { code: out.code, summary: out.summary, at: Date.now() }],
+        refsBuilt: builtRefs,
       }),
       true,
     );

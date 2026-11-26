@@ -28,11 +28,12 @@ type ModelId = keyof typeof PRICES;
 const pick = (m: string | undefined, fallback: ModelId): ModelId => (m && m in PRICES ? (m as ModelId) : fallback);
 // A new screen is designed from scratch by FIRST_BUILD_MODEL at high effort: that's where taste matters
 // most. Rebuilds, markups and variations edit an existing screen, so BUILD_MODEL does them at medium effort,
-// and it also runs the review when the checks find problems. Both can be overridden with env vars.
-// Suggestions, variation plans and briefs use the helper model.
+// Both can be overridden with env vars. The designer asked for Opus on everything that judges a screen:
+// the review pass and "Review markups" (suggestions) use REVIEW_MODEL. Variation plans and briefs use the helper.
 const FIRST_BUILD_MODEL = pick(process.env.FIRST_BUILD_MODEL, "claude-opus-5-5");
 const BUILD_MODEL = pick(process.env.BUILD_MODEL, "claude-sonnet-5-5");
 const HELPER_MODEL: ModelId = "claude-sonnet-5-5";
+const REVIEW_MODEL = pick(process.env.REVIEW_MODEL, "claude-opus-5-5");
 const FIRST_BUILD_EFFORT = "high" as const;
 const BUILD_EFFORT = "medium" as const;
 // Server-side fallback: if a request is declined by a safety classifier, the API retries it on
@@ -208,7 +209,7 @@ export async function suggest(req: SuggestRequest): Promise<SuggestResponse> {
     },
   ];
   const msg = await client().beta.messages.create({
-    model: HELPER_MODEL,
+    model: REVIEW_MODEL,
     max_tokens: 4000,
     system: SUGGEST_SYSTEM,
     output_config: { effort: "low", format: { type: "json_schema", schema: suggestSchema } },
@@ -362,10 +363,10 @@ export async function review(req: ReviewRequest, onProgress?: (p: Progress) => v
       .join("\n\n"),
   });
   const stream = client().beta.messages.stream({
-    model: BUILD_MODEL,
+    model: REVIEW_MODEL,
     max_tokens: 20000,
     system: withSkills(REVIEW_SYSTEM),
-    output_config: { effort: "low", format: { type: "json_schema", schema: reviewSchema } },
+    output_config: { effort: "medium", format: { type: "json_schema", schema: reviewSchema } },
     messages: [{ role: "user", content }],
     ...FALLBACK,
   });

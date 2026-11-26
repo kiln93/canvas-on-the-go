@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { keyboardOnPencilTap, primeKeyboard } from "./keyboard";
 import { ThinkingOrb } from "thinking-orbs";
-import { COST_ESTIMATE, dollars, runGenerate, runSuggest } from "../api";
-import { NOTE_TAGS, uid, updateFrame, type Frame, type NoteItem, type NoteTag } from "../store";
+import { buildInputs, COST_ESTIMATE, dollars, NOTHING_TO_BUILD, runGenerate, runSuggest } from "../api";
+import { NOTE_TAGS, uid, updateFrame, useStore, type Frame, type NoteItem, type NoteTag } from "../store";
 import { shrinkImage } from "../images";
 import { MAX_REFS, openMobbin, suggestRefs } from "./MobbinPicker";
 
@@ -17,6 +18,7 @@ export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperti
   // Callout numbers on the sketch count only notes that have a region.
   let callout = 0;
 
+  const inputs = buildInputs(f);
   return (
     <div data-ui className="note-card" style={style}>
       <div className="note-head">
@@ -42,7 +44,7 @@ export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperti
               Reading your sketch…
             </>
           ) : f.code ? (
-            "Press and hold the pen on any part of the screen to leave a note there, or write one below."
+            "Tap any part of the screen to leave a note on it, or write one below."
           ) : (
             "Tap “Done sketching” and I'll suggest what each part is. You can also press and hold the pen on any part, or write or say a note below."
           )}
@@ -119,11 +121,14 @@ export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperti
       <div className="note-foot">
         {f.code ? (
           <>
-            <button className="btn" disabled={!!f.busy} onClick={() => runSuggest(f.id)}>
-              Review markups
-            </button>
-            <button className="btn ink" disabled={!!f.busy} onClick={() => runGenerate(f.id)}>
-              Rebuild · {dollars(COST_ESTIMATE.variation)}
+            {!inputs.any && !f.busy && <p className="muted small note-foot-hint">{NOTHING_TO_BUILD}</p>}
+            {inputs.markups && (
+              <button className="btn" disabled={!!f.busy} onClick={() => runSuggest(f.id)}>
+                Review markups
+              </button>
+            )}
+            <button className="btn ink" disabled={!!f.busy || !inputs.any} onClick={() => runGenerate(f.id)}>
+              {inputs.refs && !inputs.notes && !inputs.markups ? "Rebuild with references" : "Rebuild"} · {dollars(COST_ESTIMATE.variation)}
             </button>
           </>
         ) : (
@@ -283,7 +288,7 @@ export function AddNote({
           onChange={(e) => setText(e.target.value)}
           placeholder={listening ? "Listening…" : placeholder}
           autoFocus={autoFocus}
-          enterKeyHint="done"
+          enterKeyHint="send"
         />
         {SpeechRecognitionCtor && (
           <button
@@ -295,6 +300,11 @@ export function AddNote({
             {listening ? "■" : <MicIcon />}
           </button>
         )}
+        <button type="submit" className="icon-btn send" disabled={!text.trim()} aria-label="Add note">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+        </button>
       </form>
       {error && <p className="mic-error">{error}</p>}
     </>
@@ -314,9 +324,12 @@ function References({ frame: f }: { frame: Frame }) {
   const refs = f.refs ?? [];
   const [error, setError] = useState("");
   const [suggesting, setSuggesting] = useState(false);
-  // A screen with no references gets the top Mobbin results for it, once; the designer edits from there.
+  const [viewing, setViewing] = useState<string | null>(null);
+  // A screen with no references gets the top Mobbin results for it, once, when it's opened to draw;
+  // the designer edits from there. (Not on the canvas, which would search for every screen at once.)
+  const focused = useStore((s) => s.focusId === f.id);
   useEffect(() => {
-    if (f.refsSuggested || refs.length) return;
+    if (!focused || f.refsSuggested || refs.length) return;
     let live = true;
     setSuggesting(true);
     suggestRefs(f.id).then((msg) => {
@@ -327,7 +340,7 @@ function References({ frame: f }: { frame: Frame }) {
     return () => {
       live = false;
     };
-  }, [f.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [f.id, focused]); // eslint-disable-line react-hooks/exhaustive-deps
   const add = async (files: FileList | null) => {
     setError("");
     const picked = [...(files ?? [])].slice(0, MAX_REFS - refs.length);
@@ -359,13 +372,9 @@ function References({ frame: f }: { frame: Frame }) {
       )}
       {refs.map((r) => (
         <div key={r.id} className={`ref-row ${r.suggested ? "suggested" : ""}`}>
-          {r.link ? (
-            <a href={r.link} target="_blank" rel="noreferrer" title={r.title ?? "Open on Mobbin"}>
-              <img src={r.url} alt={r.title ?? "Mobbin reference"} referrerPolicy="no-referrer" />
-            </a>
-          ) : (
-            <img src={r.data ? `data:image/jpeg;base64,${r.data}` : r.url} alt={r.title ?? "Reference"} referrerPolicy="no-referrer" />
-          )}
+          <button className="ref-thumb" onClick={() => setViewing(r.id)} aria-label={`View ${r.title ?? "reference"}`}>
+            <img src={r.data ? `data:image/jpeg;base64,${r.data}` : r.url} alt="" referrerPolicy="no-referrer" />
+          </button>
           <input
             value={r.note}
             onChange={(e) => setRef(r.id, e.target.value)}
@@ -377,18 +386,52 @@ function References({ frame: f }: { frame: Frame }) {
           </button>
         </div>
       ))}
-      {refs.length < MAX_REFS && (
-        <div className="ref-adds">
+      <div className="ref-adds">
+        {refs.length < MAX_REFS ? (
           <label className="ref-add">
             + Screenshot or photo
             <input type="file" accept="image/*" multiple hidden onChange={(e) => (add(e.target.files), (e.target.value = ""))} />
           </label>
-          <button className="ref-add" onClick={() => openMobbin(f.id)}>
-            Find on Mobbin
-          </button>
-        </div>
-      )}
+        ) : (
+          <span className="ref-add ref-full">Full · remove one to add a photo</span>
+        )}
+        <button className="ref-add" onClick={() => openMobbin(f.id)}>
+          {refs.length ? "Change on Mobbin" : "Find on Mobbin"}
+        </button>
+      </div>
+      {viewing && <RefViewer frame={f} id={viewing} onClose={() => setViewing(null)} onRemove={(id) => (remove(id), setViewing(null))} />}
       {error && <p className="small note-skipped">{error}</p>}
     </div>
+  );
+}
+
+/** A reference shown large, with what to take from it and where it came from. */
+function RefViewer({ frame: f, id, onClose, onRemove }: { frame: Frame; id: string; onClose: () => void; onRemove: (id: string) => void }) {
+  const r = f.refs?.find((x) => x.id === id);
+  if (!r) return null;
+  return createPortal(
+    <div className="modal-scrim" data-ui onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal ref-viewer" role="dialog" aria-label="Reference">
+        <div className="mobbin-head">
+          <h2>{r.title ?? "Reference"}</h2>
+          <button className="btn ghost" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <img src={r.data ? `data:image/jpeg;base64,${r.data}` : r.url} alt={r.title ?? "Reference"} referrerPolicy="no-referrer" />
+        {r.note && <p className="small">Take from it: {r.note}</p>}
+        <div className="modal-actions">
+          <button className="btn ghost danger" onClick={() => onRemove(r.id)}>
+            Remove
+          </button>
+          {r.link && (
+            <a className="btn" href={r.link} target="_blank" rel="noreferrer">
+              Open on Mobbin
+            </a>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
