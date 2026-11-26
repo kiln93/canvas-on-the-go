@@ -25,10 +25,14 @@ const PRICES = {
 } as const;
 type ModelId = keyof typeof PRICES;
 const pick = (m: string | undefined, fallback: ModelId): ModelId => (m && m in PRICES ? (m as ModelId) : fallback);
-// Screens are built (and, when the checks find problems, reviewed) by BUILD_MODEL. Set the BUILD_MODEL
-// env var to claude-opus-5-5 for Opus. Suggestions, variation plans and briefs use the helper model.
+// A new screen is designed from scratch by FIRST_BUILD_MODEL at high effort: that's where taste matters
+// most. Rebuilds, markups and variations edit an existing screen, so BUILD_MODEL does them at medium effort,
+// and it also runs the review when the checks find problems. Both can be overridden with env vars.
+// Suggestions, variation plans and briefs use the helper model.
+const FIRST_BUILD_MODEL = pick(process.env.FIRST_BUILD_MODEL, "claude-opus-5-5");
 const BUILD_MODEL = pick(process.env.BUILD_MODEL, "claude-sonnet-5-5");
 const HELPER_MODEL: ModelId = "claude-sonnet-5-5";
+const FIRST_BUILD_EFFORT = "high" as const;
 const BUILD_EFFORT = "medium" as const;
 // Server-side fallback: if a request is declined by a safety classifier, the API retries it on
 // a fallback model chosen by refusal category, inside the same call.
@@ -271,12 +275,13 @@ async function generateOnce(
       .filter(Boolean)
       .join("\n\n"),
   });
+  const fresh = !req.previousCode;
   // Streaming keeps long generations under HTTP timeouts.
   const stream = client().beta.messages.stream({
-    model: BUILD_MODEL,
-    max_tokens: 20000,
+    model: fresh ? FIRST_BUILD_MODEL : BUILD_MODEL,
+    max_tokens: fresh ? 32000 : 20000,
     system: withSkills(GENERATE_SYSTEM),
-    output_config: { effort: BUILD_EFFORT, format: { type: "json_schema", schema: asEdits ? editSchema : generateSchema } },
+    output_config: { effort: fresh ? FIRST_BUILD_EFFORT : BUILD_EFFORT, format: { type: "json_schema", schema: asEdits ? editSchema : generateSchema } },
     messages: [{ role: "user", content }],
     ...FALLBACK,
   });

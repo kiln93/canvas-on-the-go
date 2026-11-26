@@ -269,8 +269,8 @@ export async function importPrd(req: ImportRequest): Promise<ImportResponse> {
   return out;
 }
 
-/** About what a build costs: a new screen, and a variation or rebuild (sent as edits to the built screen). */
-export const COST_ESTIMATE = { screen: 0.15, variation: 0.05 };
+/** About what a build costs: a new screen (Opus, high effort), and a variation or rebuild (Sonnet edits). */
+export const COST_ESTIMATE = { screen: 0.35, variation: 0.05 };
 export const dollars = (n: number) => (n < 0.1 ? `about ${Math.max(1, Math.round(n * 100))}¢` : `about $${n.toFixed(2)}`);
 
 /**

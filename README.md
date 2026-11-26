@@ -67,7 +67,7 @@ The key stays on the server (`api/*.ts`). The browser never sees it.
 
 ## Costs
 
-Screens are built with Claude Sonnet 5.5 at medium effort ($2 per million input tokens, $10 per million output); set `BUILD_MODEL=claude-opus-5-5` to build with Opus. A new screen costs about 15¢. Variations, markups and rebuilds send only the changed lines (find/replace edits), about 5¢. Nothing paid runs without a tap, and buttons show the estimate. The meter in the top bar estimates this month's spend from real token counts (cache reads and writes at their own prices) and stops new AI calls at your cap ($50 by default, editable).
+A new screen is designed by Claude Opus 5.5 at high effort ($4 per million input tokens, $20 per million output), about 35¢. Variations, markups and rebuilds are edits by Claude Sonnet 5.5 at medium effort that send only the changed lines (find/replace edits), about 5¢. `FIRST_BUILD_MODEL` and `BUILD_MODEL` env vars override the two models. Screens can use any Lucide icon, real photos by keyword (`Photo`), and the project's optional style reference image. Nothing paid runs without a tap, and buttons show the estimate. The meter in the top bar estimates this month's spend from real token counts (cache reads and writes at their own prices) and stops new AI calls at your cap ($50 by default, editable).
 
 ## Not in this slice yet
 
