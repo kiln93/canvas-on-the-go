@@ -45,11 +45,21 @@ export type ImportRequest =
 
 export type ImportResponse = { title: string; brief: string; usage: Usage };
 
-// /api/generate streams one JSON object per line.
-export type GenerateStreamLine =
-  | { type: "progress"; phase: "thinking" | "writing"; chars: number }
-  | { type: "done"; result: GenerateResponse }
+// /api/generate and /api/review stream one JSON object per line.
+export type StreamLine<T> =
+  | { type: "progress"; phase: "thinking" | "writing" | "reviewing" | "fixing"; chars: number }
+  | { type: "done"; result: T }
   | ({ type: "error" } & ApiError);
+export type GenerateStreamLine = StreamLine<GenerateResponse>;
+
+export type ReviewRequest = Omit<GenerateRequest, "previousCode" | "designSystem"> & { code: string };
+export type ReviewResponse = {
+  verdict: "ship" | "fix";
+  findings: string[];
+  keep: string;
+  code: string; // the corrected screen, or "" when shipping as is
+  usage: Usage;
+};
 
 export type VariationsRequest = { brief: string; surfaceName: string; device: string; code: string; existing: string[] };
 export type VariationsResponse = { variations: { name: string; instruction: string }[]; usage: Usage };

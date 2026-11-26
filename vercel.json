@@ -11,6 +11,9 @@
     },
     "api/variations.ts": {
       "maxDuration": 60
+    },
+    "api/review.ts": {
+      "maxDuration": 300
     }
   }
 }

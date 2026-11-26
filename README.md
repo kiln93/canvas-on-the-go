@@ -13,6 +13,8 @@ A lightweight design canvas for iPad (and any browser). Sketch a screen with App
 7. **Open surface.** The first time you open a surface with a built screen, Claude plans the states worth designing for it (empty, offline, a product-specific edge case…) and builds each as a variation. **Suggest more states** asks for more; **+ Variation** makes one you describe.
 8. **▶ Play** opens the screen full size so you can click through it.
 
+Every build gets a second look: a fresh Claude reviews the screen against the design skills in `server/skills` (Anthropic's frontend-design, plus guides from impeccable, hallmark and open-design) and fixes what fails. **Reviewed: fixed N things** under the screen lists what changed.
+
 While Claude works, the frame shows what it's doing and how far along it is, with an orb, a beam around the frame, a pixel mosaic while the screen is written, and a wave that reveals the finished screen.
 
 Generated screens can use Motion for React, GSAP (with Flip, Draggable, ScrollTrigger, CustomEase) and Three.js. They load only in screens that use them.
@@ -59,6 +61,8 @@ The key stays on the server (`api/*.ts`). The browser never sees it.
 | `src/runtime/frameHtml.ts` | The document a generated screen runs in: the shadcn-style kit plus iOS parts (Screen, NavBar, TabBar, ListGroup…) |
 | `src/store.ts` | Project state, undo and redo, saved to the browser |
 | `server/claude.ts`, `server/prompts.ts` | The Claude calls: read a sketch, build a screen (streamed with progress), plan variations, import a PRD |
+| `server/skills/`, `server/skills.ts` | Design skill files given to Claude (sources and licenses in `server/skills/NOTICE.md`), bundled by `scripts/build-skills.mjs` |
+| `server/lint.ts` | Mechanical checks passed to the reviewer |
 | `api/*.ts` | Vercel functions. `npm run dev` serves the same handlers |
 
 ## Costs

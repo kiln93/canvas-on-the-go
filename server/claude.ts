@@ -1,5 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { BRIEF_SYSTEM, GENERATE_SYSTEM, SUGGEST_SYSTEM, VARIATIONS_SYSTEM } from "./prompts.js";
+import { lintScreen } from "./lint.js";
+import { BRIEF_SYSTEM, GENERATE_SYSTEM, REVIEW_SYSTEM, SKILLS_CONTEXT, SUGGEST_SYSTEM, VARIATIONS_SYSTEM } from "./prompts.js";
+import { SKILLS } from "./skills.js";
 import type {
   ApiError,
   GenerateRequest,
@@ -8,6 +10,8 @@ import type {
   ImportResponse,
   SuggestRequest,
   SuggestResponse,
+  ReviewRequest,
+  ReviewResponse,
   Usage,
   VariationsRequest,
   VariationsResponse,
@@ -146,7 +150,16 @@ export async function suggest(req: SuggestRequest): Promise<SuggestResponse> {
   };
 }
 
-export type Progress = { phase: "thinking" | "writing"; chars: number };
+export type Progress = { phase: "thinking" | "writing" | "reviewing" | "fixing"; chars: number };
+
+// The design skills go first and are cached, so building and reviewing share them and later calls
+// pay a tenth of the price for those ~21k tokens.
+const skillsBlock: Anthropic.Beta.BetaTextBlockParam = {
+  type: "text",
+  text: SKILLS_CONTEXT(SKILLS),
+  cache_control: { type: "ephemeral" },
+};
+const withSkills = (prompt: string): Anthropic.Beta.BetaTextBlockParam[] => [skillsBlock, { type: "text", text: prompt }];
 
 export async function generate(req: GenerateRequest, onProgress?: (p: Progress) => void): Promise<GenerateResponse> {
   const content: Anthropic.Beta.BetaContentBlockParam[] = [];
@@ -174,7 +187,7 @@ export async function generate(req: GenerateRequest, onProgress?: (p: Progress) 
   const stream = client().beta.messages.stream({
     model: MODEL,
     max_tokens: 32000,
-    system: GENERATE_SYSTEM,
+    system: withSkills(GENERATE_SYSTEM),
     output_config: { effort: "high", format: { type: "json_schema", schema: generateSchema } },
     messages: [{ role: "user", content }],
     ...FALLBACK,
@@ -189,6 +202,65 @@ export async function generate(req: GenerateRequest, onProgress?: (p: Progress) 
   const msg = await stream.finalMessage();
   const { plan: _plan, ...out } = jsonText(msg) as Omit<GenerateResponse, "usage"> & { plan: string };
   return { ...out, usage: usageOf(msg) };
+}
+
+const reviewSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["verdict", "findings", "keep", "code"],
+  properties: {
+    verdict: { type: "string", enum: ["ship", "fix"] },
+    findings: { type: "array", items: { type: "string" } },
+    keep: { type: "string" },
+    code: { type: "string" },
+  },
+};
+
+/** A second, fresh look at a generated screen against the design skills; returns fixed code when needed. */
+export async function review(req: ReviewRequest, onProgress?: (p: Progress) => void): Promise<ReviewResponse> {
+  if (!req.code) throw new HttpError(400, { error: "Nothing to review.", code: "bad_request" });
+  const lint = lintScreen(req.code, req.device);
+  const content: Anthropic.Beta.BetaContentBlockParam[] = [];
+  if (req.image) content.push(image(req.image));
+  content.push({
+    type: "text",
+    text: [
+      `Project brief: ${req.brief || "(none)"}`,
+      `Surface: ${req.surfaceName || "untitled"}`,
+      `Frame: ${req.device}, ${req.width}x${req.height}px`,
+      req.notes.length ? `Designer's notes:\n${req.notes.map((n) => `- ${n}`).join("\n")}` : "No notes.",
+      req.instruction ? `Instruction the screen was built for: ${req.instruction}` : "",
+      req.image ? "The image is the designer's sketch (or markups) the screen was built from." : "",
+      lint.length ? `Linter findings:\n${lint.map((l) => `- ${l}`).join("\n")}` : "Linter findings: none.",
+      `Screen code:\n${req.code}`,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+  });
+  const stream = client().beta.messages.stream({
+    model: MODEL,
+    max_tokens: 32000,
+    system: withSkills(REVIEW_SYSTEM),
+    output_config: { effort: "medium", format: { type: "json_schema", schema: reviewSchema } },
+    messages: [{ role: "user", content }],
+    ...FALLBACK,
+  });
+  let chars = 0;
+  stream.on("text", (delta) => {
+    chars += delta.length;
+    onProgress?.({ phase: "fixing", chars });
+  });
+  onProgress?.({ phase: "reviewing", chars: 0 });
+  const msg = await stream.finalMessage();
+  const out = jsonText(msg) as Omit<ReviewResponse, "usage">;
+  const fixed = out.verdict === "fix" && out.code.trim().length > 0;
+  return {
+    verdict: fixed ? "fix" : "ship",
+    findings: out.findings.slice(0, 8),
+    keep: out.keep,
+    code: fixed ? out.code : "",
+    usage: usageOf(msg),
+  };
 }
 
 const variationsSchema = {

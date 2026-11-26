@@ -17,6 +17,8 @@ const ORB: Record<Phase, OrbState> = {
   planning: "connecting",
   thinking: "working",
   writing: "composing",
+  reviewing: "solving",
+  fixing: "weaving",
   rendering: "shaping",
   loading: "shaping",
 };
@@ -26,6 +28,8 @@ const LABEL: Record<Phase, string> = {
   planning: "Planning the variations",
   thinking: "Planning the layout",
   writing: "Writing the screen",
+  reviewing: "Reviewing against the design skills",
+  fixing: "Fixing what the review found",
   rendering: "Drawing the screen",
   loading: "Loading the screen",
 };
@@ -52,10 +56,10 @@ export function FrameStatus({ phase, progress, scale }: { phase: Phase; progress
       <div className="frame-status-text">
         <span>
           {LABEL[phase]}
-          {phase === "writing" && pct != null ? ` · ${pct}%` : "…"}
+          {pct != null && pct < 100 && phase !== "rendering" ? ` · ${pct}%` : "…"}
         </span>
         {elapsed && <span className="muted small">{elapsed}</span>}
-        {phase === "writing" && pct != null && (
+        {pct != null && phase !== "rendering" && (
           <span className="frame-status-bar">
             <span style={{ width: `${pct}%` }} />
           </span>

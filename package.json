@@ -2,9 +2,9 @@
   "name": "canvas-on-the-go",
   "description": "Sketch UI with Apple Pencil, get live React frames.",
   "scripts": {
-    "predev": "node scripts/copy-runtime.mjs",
+    "predev": "node scripts/copy-runtime.mjs && node scripts/build-skills.mjs",
     "dev": "vite --host",
-    "prebuild": "node scripts/copy-runtime.mjs",
+    "prebuild": "node scripts/copy-runtime.mjs && node scripts/build-skills.mjs",
     "build": "tsc --noEmit -p . && vite build",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit -p ."
