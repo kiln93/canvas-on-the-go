@@ -184,6 +184,8 @@ export function applyEdits(code: string, edits: { find: string; replace: string 
   return out;
 }
 
+const MAX_REFS = 4;
+
 function image(data: string, media_type: "image/png" | "image/jpeg" = "image/png"): Anthropic.Beta.BetaImageBlockParam {
   return { type: "image", source: { type: "base64", media_type, data } };
 }
@@ -250,6 +252,11 @@ async function generateOnce(
     content.push({ type: "text", text: "Style reference (match its look, not its content):" });
     content.push(image(req.styleRef, "image/jpeg"));
   }
+  (req.refs ?? []).slice(0, MAX_REFS).forEach((r, i) => {
+    const what = r.note.trim() ? `take this from it: ${r.note.trim()}` : "take what fits this screen";
+    content.push({ type: "text", text: `Reference ${i + 1} for this screen (${what}):` });
+    content.push(image(r.data, "image/jpeg"));
+  });
   if (req.image) content.push(image(req.image));
   content.push({
     type: "text",

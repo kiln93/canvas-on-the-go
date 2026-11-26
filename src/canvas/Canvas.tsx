@@ -625,9 +625,12 @@ function FocusBar({ frame: f, onDone }: { frame: Frame; onDone: () => void }) {
       </header>
       {notesOpen && (
         <div className="focus-notes" data-ui>
-          <button className="btn ghost focus-notes-close" onClick={() => setNotesOpen(false)}>
-            Done
-          </button>
+          <div className="focus-notes-bar">
+            <span>Notes</span>
+            <button className="btn ghost focus-notes-close" onClick={() => setNotesOpen(false)}>
+              Done
+            </button>
+          </div>
           <NoteCard frame={f} style={{}} />
         </div>
       )}

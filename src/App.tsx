@@ -1,3 +1,4 @@
+import { shrinkImage } from "./images";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
 import { importPrd } from "./api";
@@ -281,17 +282,6 @@ function Preview({ id, onClose }: { id: string; onClose: () => void }) {
 
 const GDOC = /docs\.google\.com\/document\//;
 
-/** Shrinks a picked image to at most 1024px on its long side, as base64 JPEG (no data: prefix). */
-async function toStyleRef(file: File): Promise<string> {
-  const bmp = await createImageBitmap(file);
-  const k = Math.min(1, 1024 / Math.max(bmp.width, bmp.height));
-  const c = document.createElement("canvas");
-  c.width = Math.round(bmp.width * k);
-  c.height = Math.round(bmp.height * k);
-  c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
-  return c.toDataURL("image/jpeg", 0.82).split(",")[1];
-}
-
 function BriefDialog(props: {
   initial: string;
   initialRef?: string;
@@ -399,7 +389,7 @@ function BriefDialog(props: {
               onChange={async (e) => {
                 const f = e.target.files?.[0];
                 e.target.value = "";
-                if (f) setStyleRef(await toStyleRef(f));
+                if (f) setStyleRef(await shrinkImage(f));
               }}
             />
           </label>

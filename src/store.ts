@@ -34,6 +34,7 @@ export type NoteItem = Suggestion & {
 };
 
 export type Version = { code: string; summary: string; at: number };
+export type ScreenRef = { id: string; data: string; note: string };
 
 export type Frame = {
   id: string;
@@ -58,6 +59,8 @@ export type Frame = {
   review?: { verdict: "ship" | "fix" | "skipped"; findings: string[]; at: number };
   /** Set on a surface's primary frame once its variations have been planned. */
   variationsPlanned?: boolean;
+  /** Reference images for this screen (base64 JPEG), each with what to take from it. Sent with every build. */
+  refs?: ScreenRef[];
   /** Variations Claude suggested for this screen, waiting for the designer to pick which to build. */
   variationPlan?: { name: string; instruction: string }[];
 };

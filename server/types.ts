@@ -30,6 +30,7 @@ export type GenerateRequest = {
   notes: string[]; // the confirmed note lines
   previousCode?: string; // present when iterating or making a variation
   styleRef?: string; // the project's style reference image (base64 JPEG), if the designer set one
+  refs?: { data: string; note: string }[]; // reference images attached to this screen, with what to take from each
   instruction?: string; // e.g. "empty state" for a variation
   designSystem: "shadcn";
 };

@@ -86,6 +86,7 @@ Content:
 - Buttons name the action ("Log run", not "Submit"). Errors say what happened and what to do, with no "Oops". An empty state says what's empty, why it matters, and offers one action.
 - Images: use Photo wherever the product would show a photo (feeds, covers, products, food, places, people). Never other image URLs. No emoji as icons; use Icon.
 - Richness: aim for the polish of a top App Store app in this category, not a wireframe. Give the screen a hero with presence (a photo, a big number, a map, a chart drawn with divs or SVG), real imagery, specific icons, and enough content to fill the screen past the fold.
+- References attached to this screen show what the designer wants here. Follow each one's caption (a layout, a component, a treatment, an interaction). With no caption, take the idea from it that fits this screen. Adapt it to this product; never copy its brand, logo or text.
 - If a style reference image is given, match its visual language: palette, type scale and weight, density, corner radius, depth and image treatment. Never copy its content, layout or brand.
 
 Behavior and motion:

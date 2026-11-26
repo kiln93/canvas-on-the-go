@@ -213,8 +213,14 @@ input, textarea { -webkit-user-select: text; user-select: text; }
   padding-bottom: env(safe-area-inset-bottom);
 }
 .focus-notes .note-card { position: static; width: auto; transform: none; border: 0; border-radius: 0; box-shadow: none; padding: 16px 16px 20px; }
-.focus-notes .note-head { min-height: 40px; padding-right: 72px; }
-.btn.ghost.focus-notes-close { position: absolute; top: 12px; right: 8px; height: 40px; z-index: 1; color: var(--accent); font-size: 16px; }
+/* The sheet's title bar stays put while its content scrolls, so Done is always in reach */
+.focus-notes-bar {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between;
+  height: 52px; padding: 0 8px 0 16px; background: var(--surface); border-bottom: 1px solid var(--border); font-weight: 500;
+}
+.btn.ghost.focus-notes-close { height: 40px; color: var(--accent); font-size: 16px; }
+.focus-notes .note-head > span:first-child { display: none; }
+.focus-notes .note-head:not(:has(button)) { display: none; }
 @media (max-width: 599px) {
   .app.notes-open .toolbar { display: none; }
 }
@@ -231,9 +237,10 @@ input, textarea { -webkit-user-select: text; user-select: text; }
     border: 0; border-left: 1px solid var(--border); border-radius: 0;
   }
   .focus-notes .note-card { padding: 20px 20px 24px; }
-  /* The Notes button in the top bar opens and closes the docked panel */
-  .btn.ghost.focus-notes-close { display: none; }
-  .focus-notes .note-head { padding-right: 0; }
+  /* The Notes button in the top bar opens and closes the docked panel, so it needs no title bar */
+  .focus-notes-bar { display: none; }
+  .focus-notes .note-head > span:first-child { display: inline; }
+  .focus-notes .note-head:not(:has(button)) { display: flex; }
   .app.drawing .toolbar {
     left: max(12px, env(safe-area-inset-left)); top: calc(50% + 28px); bottom: auto; transform: translate3d(0, -50%, 0);
     flex-direction: column;
@@ -377,3 +384,13 @@ button.tag { cursor: pointer; }
 .style-ref-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 180px; }
 .style-ref label.btn { display: inline-flex; align-items: center; cursor: pointer; }
 .style-ref-actions { display: flex; gap: 4px; align-items: center; }
+
+/* A screen's references, in its Notes panel */
+.refs { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.refs-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 500; }
+.ref-row { display: flex; gap: 8px; align-items: center; }
+.ref-row img { width: 44px; height: 56px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); flex-shrink: 0; }
+.ref-row input { flex: 1; min-width: 0; height: 40px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--r-input); background: #fff; font-size: 14px; outline: none; }
+.ref-row input:focus { border-color: var(--accent); }
+.ref-add { display: flex; align-items: center; justify-content: center; min-height: 44px; border: 1px dashed var(--border); border-radius: var(--r-input); color: var(--icon); font-weight: 500; cursor: pointer; }
+.ref-add:active { background: rgba(39, 37, 30, 0.04); }
