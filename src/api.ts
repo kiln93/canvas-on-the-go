@@ -61,6 +61,19 @@ function surfaceName(f: Frame) {
   return primary?.name || f.name || "Untitled surface";
 }
 
+/** A screen's job lives on its surface's primary frame, so its variations share it. */
+export function surfaceJob(f: Frame) {
+  return (frame(f.surfaceId)?.job ?? f.job ?? "").trim();
+}
+
+/** The project's other screens, by name, so a screen is built as part of an app rather than alone. */
+function otherScreens(f: Frame) {
+  return getState()
+    .project.frames.filter((x) => x.primary && x.surfaceId !== f.surfaceId && x.name && !/^untitled/i.test(x.name))
+    .map((x) => x.name.trim())
+    .slice(0, 20);
+}
+
 function overCap() {
   const { spend, cap } = getState().project;
   return spend.cost >= cap;
@@ -97,11 +110,16 @@ export async function runSuggest(id: string) {
       code: f.code,
       // The designer's own notes, and suggestions they already confirmed, so Claude reads the sketch through them.
       notes: f.notes.filter((n) => n.status === "accepted" || (n.mine && n.status === "pending")).map(noteLine),
+      job: surfaceJob(f) || undefined,
+      otherScreens: otherScreens(f),
     };
     const out = await post<SuggestResponse>("/api/suggest", req);
     addSpend(out.usage);
+    // The proposed job goes on the surface only while the designer hasn't written one.
+    if (out.job && !surfaceJob(f)) updateFrame(f.surfaceId, { job: out.job });
     updateFrame(id, (cur) => ({
       busy: undefined,
+      assumed: out.assumed || undefined,
       name: cur.name || out.title,
       // Keep what the designer wrote; replace only the AI's unanswered guesses.
       notes: [
@@ -162,8 +180,11 @@ function expectedChars(f: Frame, previousCode?: string) {
 export const refsKey = (f: Frame) => (f.refs ?? []).map((r) => `${r.url ?? r.data?.slice(0, 32)}|${r.note.trim()}`).join("\n");
 
 /** What a build would take in right now, so buttons only offer a build that can run. */
+/** "Why" and "Not this" notes are standing rules: sent with every build, never used up or a reason to rebuild on their own. */
+export const standing = (n: NoteItem) => n.tag === "why" || n.tag === "not";
+
 export function buildInputs(f: Frame) {
-  const notes = f.notes.filter((n) => n.status === "accepted").length;
+  const notes = f.notes.filter((n) => n.status === "accepted" && !standing(n)).length;
   const markups = f.strokes.some((s) => s.kind === "markup");
   const sketch = !f.code && f.strokes.some((s) => s.kind === "sketch");
   const refs = !!f.refs?.length && refsKey(f) !== (f.refsBuilt ?? "");
@@ -182,9 +203,10 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
   const notes = sent.map(noteLine);
   // New or changed references are reason enough to rebuild.
   const refsChanged = buildInputs(f).refs;
-  if (!image && !notes.length && !instruction && refsChanged && f.code)
+  const changes = sent.filter((n) => !standing(n)).length;
+  if (!image && !changes && !instruction && refsChanged && f.code)
     instruction = "Rework this screen to take from the attached references what each one is marked for. Keep the screen's purpose and content.";
-  if (!image && !notes.length && !instruction && !(refsChanged && !f.code)) {
+  if (!image && !changes && !instruction && !(refsChanged && !f.code)) {
     return updateFrame(id, { error: f.code ? NOTHING_TO_BUILD : "Draw in the frame or add a note first." });
   }
   const builtRefs = refsKey(f);
@@ -206,6 +228,9 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
       styleRef: getState().project.styleRef,
       refs: f.refs?.map((r) => ({ data: r.data, url: r.url, note: r.note })),
       designSystem: "shadcn",
+      job: surfaceJob(f) || undefined,
+      assumed: !f.code ? f.assumed : undefined,
+      otherScreens: otherScreens(f),
     };
     // Building fills the first 60% of the bar; the review and its fixes the rest.
     const built = await postStream<GenerateResponse>("/api/generate", req, (l) => {
@@ -232,6 +257,8 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
         notes: req.notes,
         instruction: req.instruction,
         code: built.code,
+        job: req.job,
+        otherScreens: req.otherScreens,
       };
       const rev = await postStream<ReviewResponse>("/api/review", reviewReq, (l) => {
         if (l.type !== "progress") return;
@@ -259,6 +286,7 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
         busy: undefined,
         code: out.code,
         summary: out.summary,
+        alsoChanged: built.alsoChanged,
         review: out.review,
         name: cur.name || out.title,
         approved: false,
@@ -266,7 +294,7 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
         // Notes Claude reports as built move to History with what changed; the others stay open, with why.
         notes: cur.notes.map((n) => {
           const i = sent.findIndex((s) => s.id === n.id);
-          if (i < 0 || n.status !== "accepted") return n;
+          if (i < 0 || n.status !== "accepted" || standing(n)) return n;
           const r = built.notesDone?.find((d) => d.note === i);
           // An answer without a report (an older server) counts every note as built, as before.
           if (!built.notesDone?.length || r?.done)
@@ -315,6 +343,7 @@ export async function planVariations(surfaceId: string) {
       device: DEVICES[primary.device].label,
       code: primary.code,
       existing: siblings.map((x) => x.name).filter(Boolean),
+      job: surfaceJob(primary) || undefined,
     };
     const plan = await post<VariationsResponse>("/api/variations", req);
     addSpend(plan.usage);

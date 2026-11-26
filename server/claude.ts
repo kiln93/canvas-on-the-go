@@ -84,18 +84,21 @@ function jsonText(msg: Anthropic.Beta.BetaMessage): unknown {
 const suggestSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["title", "suggestions"],
+  required: ["title", "assumed", "job", "suggestions"],
   properties: {
     title: { type: "string" },
+    assumed: { type: "string" },
+    job: { type: "string" },
     suggestions: {
       type: "array",
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["kind", "text", "region"],
+        required: ["kind", "text", "region", "options"],
         properties: {
           kind: { type: "string", enum: ["component", "layout", "question", "copy"] },
           text: { type: "string" },
+          options: { type: "array", items: { type: "string" } },
           region: {
             anyOf: [
               { type: "null" },
@@ -133,13 +136,14 @@ const notesDoneSchema = {
 const generateSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["plan", "title", "summary", "code", "notes_done"],
+  required: ["plan", "title", "summary", "code", "notes_done", "also_changed"],
   properties: {
     plan: { type: "string" },
     title: { type: "string" },
     summary: { type: "string" },
     code: { type: "string" },
     notes_done: notesDoneSchema,
+    also_changed: { type: "string" },
   },
 };
 
@@ -156,13 +160,14 @@ const editsSchema = {
 const editSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["plan", "title", "summary", "edits", "notes_done"],
+  required: ["plan", "title", "summary", "edits", "notes_done", "also_changed"],
   properties: {
     plan: { type: "string" },
     title: { type: "string" },
     summary: { type: "string" },
     edits: editsSchema,
     notes_done: notesDoneSchema,
+    also_changed: { type: "string" },
   },
 };
 const EDIT_RULES = [
@@ -200,6 +205,8 @@ export async function suggest(req: SuggestRequest): Promise<SuggestResponse> {
       type: "text",
       text: [
         `This screen: ${req.surfaceName || "untitled"} on ${req.device}`,
+        req.job ? `Its job, set by the designer: ${req.job}` : "The designer hasn't set this screen's job yet; propose one.",
+        req.otherScreens?.length ? `The app's other screens: ${req.otherScreens.join(", ")}` : "",
         req.notes?.length
           ? `The designer's notes on this screen. They say what it is; follow them and don't suggest what they already cover:\n${req.notes
               .map((n, i) => `${i + 1}. ${n}`)
@@ -224,7 +231,13 @@ export async function suggest(req: SuggestRequest): Promise<SuggestResponse> {
   const out = jsonText(msg) as Omit<SuggestResponse, "usage">;
   return {
     title: out.title,
-    suggestions: out.suggestions.map((s, i) => ({ ...s, id: `s${Date.now().toString(36)}${i}` })),
+    assumed: out.assumed?.trim() ?? "",
+    job: out.job?.trim() ?? "",
+    suggestions: out.suggestions.map((s, i) => ({
+      ...s,
+      options: s.options?.map((o) => o.trim()).filter(Boolean).slice(0, 3),
+      id: `s${Date.now().toString(36)}${i}`,
+    })),
     usage: usageOf(msg),
   };
 }
@@ -277,7 +290,10 @@ async function generateOnce(
     type: "text",
     text: [
       `This screen: ${req.surfaceName || "untitled"}`,
+      req.job ? `Its job: ${req.job}` : "",
       `Frame: ${req.device}, ${req.width}x${req.height}px`,
+      req.otherScreens?.length ? `The app's other screens (keep navigation and chrome consistent with a product that has them): ${req.otherScreens.join(", ")}` : "",
+      req.assumed ? `What you read in the sketch and told the designer, who didn't correct it: ${req.assumed}` : "",
       `Background, the brief for the whole app: ${req.brief || "(none)"}. This screen may be a different part of the app from the brief's main feature; it is what the sketch and notes describe, and the brief only sets tone, content and product context.`,
       `Design system: ${req.designSystem}`,
       req.notes.length
@@ -320,13 +336,13 @@ async function generateOnce(
   const notesDone = (d: Done | undefined) =>
     (d ?? []).filter((x) => x.note >= 1 && x.note <= req.notes.length).map((x) => ({ ...x, note: x.note - 1 }));
   if (asEdits) {
-    const out = jsonText(msg) as { title: string; summary: string; edits: { find: string; replace: string }[]; notes_done: Done };
+    const out = jsonText(msg) as { title: string; summary: string; edits: { find: string; replace: string }[]; notes_done: Done; also_changed?: string };
     const code = applyEdits(req.previousCode ?? "", out.edits);
     if (code == null) return null;
-    return { title: out.title, summary: out.summary, code, notesDone: notesDone(out.notes_done), usage: usageOf(msg) };
+    return { title: out.title, summary: out.summary, code, notesDone: notesDone(out.notes_done), alsoChanged: out.also_changed?.trim() || undefined, usage: usageOf(msg) };
   }
-  const out = jsonText(msg) as { title: string; summary: string; code: string; notes_done: Done };
-  return { title: out.title, summary: out.summary, code: out.code, notesDone: notesDone(out.notes_done), usage: usageOf(msg) };
+  const out = jsonText(msg) as { title: string; summary: string; code: string; notes_done: Done; also_changed?: string };
+  return { title: out.title, summary: out.summary, code: out.code, notesDone: notesDone(out.notes_done), alsoChanged: out.also_changed?.trim() || undefined, usage: usageOf(msg) };
 }
 
 const reviewSchema = {
@@ -355,7 +371,10 @@ export async function review(req: ReviewRequest, onProgress?: (p: Progress) => v
     type: "text",
     text: [
       `This screen: ${req.surfaceName || "untitled"}`,
+      req.job ? `Its job: ${req.job}` : "",
       `Frame: ${req.device}, ${req.width}x${req.height}px`,
+      req.otherScreens?.length ? `The app's other screens (keep navigation and chrome consistent with a product that has them): ${req.otherScreens.join(", ")}` : "",
+      req.assumed ? `What you read in the sketch and told the designer, who didn't correct it: ${req.assumed}` : "",
       `Background, the brief for the whole app: ${req.brief || "(none)"}. This screen may be a different part of the app from the brief's main feature; it is what the sketch and notes describe, and the brief only sets tone, content and product context.`,
       req.notes.length ? `Designer's notes:\n${req.notes.map((n) => `- ${n}`).join("\n")}` : "No notes.",
       req.instruction ? `Instruction the screen was built for: ${req.instruction}` : "",
@@ -424,6 +443,7 @@ export async function planVariations(req: VariationsRequest): Promise<Variations
         role: "user",
         content: [
           `Screen: ${req.surfaceName} on ${req.device}`,
+          req.job ? `Its job: ${req.job}` : "",
           `Background, the brief for the whole app (this screen may be a different part of it): ${req.brief || "(none)"}`,
           req.existing.length ? `Already exists: ${req.existing.join(", ")}` : "",
           `Screen code:\n${req.code}`,

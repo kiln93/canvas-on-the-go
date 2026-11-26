@@ -474,3 +474,21 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; colo
   .btn.ghost.focus-done { padding: 0 4px; }
   .focus-title-btn { padding: 0 6px; }
 }
+
+/* The screen's job, and what Claude took as given instead of asking. */
+.job-field { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; }
+.job-field > span { font-size: 12px; font-weight: 500; color: var(--icon); flex-shrink: 0; }
+.job-field input {
+  flex: 1; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); font: inherit; font-size: 14px; color: var(--ink);
+}
+.job-field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(1, 106, 113, 0.12); }
+.note-assumed { margin: 4px 0 8px; line-height: 1.45; }
+.note-assumed > span { font-weight: 500; color: var(--icon); }
+.note-options { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.note-options .chip {
+  min-height: 32px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface);
+  font: inherit; font-size: 13px; color: var(--ink); cursor: pointer;
+}
+.note-options .chip:active { background: var(--ink); color: var(--canvas); }
+.also-changed { display: block; margin-top: 4px; color: var(--icon); }
