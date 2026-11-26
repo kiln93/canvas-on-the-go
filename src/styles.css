@@ -392,5 +392,34 @@ button.tag { cursor: pointer; }
 .ref-row img { width: 44px; height: 56px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); flex-shrink: 0; }
 .ref-row input { flex: 1; min-width: 0; height: 40px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--r-input); background: #fff; font-size: 14px; outline: none; }
 .ref-row input:focus { border-color: var(--accent); }
-.ref-add { display: flex; align-items: center; justify-content: center; min-height: 44px; border: 1px dashed var(--border); border-radius: var(--r-input); color: var(--icon); font-weight: 500; cursor: pointer; }
+.ref-adds { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ref-add { font: inherit; background: none; display: flex; align-items: center; justify-content: center; min-height: 44px; border: 1px dashed var(--border); border-radius: var(--r-input); color: var(--icon); font-weight: 500; cursor: pointer; }
 .ref-add:active { background: rgba(39, 37, 30, 0.04); }
+
+/* Find on Mobbin */
+.mobbin-sheet { max-width: 720px; max-height: calc(100% - 32px); overflow-y: auto; padding-top: 0; padding-bottom: 0; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.mobbin-top { position: sticky; top: 0; z-index: 1; display: flex; flex-direction: column; gap: 10px; margin: 0 -24px; padding: 20px 24px 12px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.mobbin-actions { position: sticky; bottom: 0; margin: 0 -24px; padding: 12px 24px calc(16px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); }
+.mobbin-sheet > .btn.ink:last-child { margin-bottom: 24px; }
+.mobbin-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mobbin-head h2 { margin: 0; }
+.mobbin-search { display: flex; gap: 8px; }
+.mobbin-search input { flex: 1; min-width: 0; height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-input); background: #fff; font-size: 16px; outline: none; }
+.mobbin-search input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(1, 106, 113, 0.12); }
+.mobbin-search .btn { height: 44px; }
+.chip.on { border-color: var(--ink); background: var(--ink); color: var(--canvas); }
+.mobbin-status { display: flex; align-items: center; gap: 8px; }
+.mobbin-said { display: block; margin-top: 4px; font-family: ui-monospace, monospace; word-break: break-all; }
+.mobbin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+@media (max-width: 600px) {
+  .modal-scrim:has(.mobbin-sheet) { padding: 8px; }
+  .mobbin-sheet { padding-left: 16px; padding-right: 16px; max-height: calc(100% - 16px); }
+  .mobbin-top, .mobbin-actions { margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
+  .mobbin-top { padding-top: 16px; }
+  .mobbin-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .mobbin-shot { padding: 4px; font-size: 11px; }
+}
+.mobbin-shot { display: flex; flex-direction: column; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: var(--r-input); background: #fff; cursor: pointer; text-align: left; font-size: 12px; color: var(--icon); }
+.mobbin-shot img { width: 100%; aspect-ratio: 9 / 19.5; object-fit: cover; object-position: top; border-radius: 8px; background: #f0ede7; }
+.mobbin-shot span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mobbin-shot.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }

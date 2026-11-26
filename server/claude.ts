@@ -1,3 +1,4 @@
+import { fetchImage } from "./mobbin.js";
 import Anthropic from "@anthropic-ai/sdk";
 import { lintScreen } from "./lint.js";
 import { BRIEF_SYSTEM, GENERATE_SYSTEM, REVIEW_SYSTEM, SKILLS_CONTEXT, SUGGEST_SYSTEM, VARIATIONS_SYSTEM } from "./prompts.js";
@@ -186,7 +187,7 @@ export function applyEdits(code: string, edits: { find: string; replace: string 
 
 const MAX_REFS = 4;
 
-function image(data: string, media_type: "image/png" | "image/jpeg" = "image/png"): Anthropic.Beta.BetaImageBlockParam {
+function image(data: string, media_type: "image/png" | "image/jpeg" | "image/webp" | "image/gif" = "image/png"): Anthropic.Beta.BetaImageBlockParam {
   return { type: "image", source: { type: "base64", media_type, data } };
 }
 
@@ -252,11 +253,19 @@ async function generateOnce(
     content.push({ type: "text", text: "Style reference (match its look, not its content):" });
     content.push(image(req.styleRef, "image/jpeg"));
   }
-  (req.refs ?? []).slice(0, MAX_REFS).forEach((r, i) => {
-    const what = r.note.trim() ? `take this from it: ${r.note.trim()}` : "take what fits this screen";
-    content.push({ type: "text", text: `Reference ${i + 1} for this screen (${what}):` });
-    content.push(image(r.data, "image/jpeg"));
-  });
+  // Mobbin references are links: fetch each image now, for this build only. One that won't load is skipped.
+  const refs = await Promise.all(
+    (req.refs ?? []).slice(0, MAX_REFS).map(async (r) =>
+      r.data ? { note: r.note, data: r.data, type: "image/jpeg" as const } : r.url ? { note: r.note, ...(await fetchImage(r.url)) } : null,
+    ),
+  );
+  refs
+    .filter((r): r is { note: string; data: string; type: "image/jpeg" } => !!r?.data)
+    .forEach((r, i) => {
+      const what = r.note.trim() ? `take this from it: ${r.note.trim()}` : "take what fits this screen";
+      content.push({ type: "text", text: `Reference ${i + 1} for this screen (${what}):` });
+      content.push(image(r.data, r.type));
+    });
   if (req.image) content.push(image(req.image));
   content.push({
     type: "text",
