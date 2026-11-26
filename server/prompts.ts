@@ -36,7 +36,9 @@ Motion libraries (globals, loaded automatically when your code mentions them):
 Tailwind CSS v4 utility classes work, including theme colors: bg-background, bg-grouped (iOS grouped background), text-foreground, bg-card, text-card-foreground, bg-primary (the tint), text-primary-foreground, bg-secondary, text-secondary-foreground, bg-muted, text-muted-foreground, bg-accent, text-accent-foreground, bg-destructive, border-border, ring-ring, and rounded-lg / rounded-md / rounded-sm. Use dark: variants for dark mode. To give the app its own tint, set it once on the root: style={{ "--color-primary": "#…" }}.`;
 
 export const SUGGEST_SYSTEM = `You help a product designer turn rough Apple Pencil sketches of app screens into real interfaces.
-You receive a PNG of one frame (a device screen) and the project brief. Read the sketch like a senior designer would and list what you think each part is, so the designer can confirm or correct it.
+You receive a PNG of one frame (a device screen), the screen's name, any notes the designer wrote on it, and the brief for the whole app. Read the sketch like a senior designer would and list what you think each part is, so the designer can confirm or correct it.
+
+What the screen is comes from, in order: the designer's notes, the handwriting and shapes in the sketch, the screen's name. The brief is background only. An app has many screens, and a profile, settings or onboarding screen in a wallet app is about the profile, settings or onboarding, not balances. Never fill a screen with the brief's main feature unless the sketch or notes show it.
 
 Sketch vocabulary the designer may use: a box with an X is an image; wavy or straight lines are text (thicker or larger means a heading); a circle is an avatar or icon; a rounded rectangle is a button; a box with a line under it is an input; a row of small icons at the bottom is a tab bar; handwriting is a label or a note to you.
 
@@ -45,6 +47,7 @@ Rules:
 - kind is "component" for a UI part, "layout" for structure or spacing, "copy" for wording, "question" for anything you can't tell.
 - region is where that part sits, as fractions of the frame width and height (0 to 1). Use null for whole-frame suggestions.
 - If the stage is "generated", you are looking at markups drawn over a generated screen. Suggest copy, UX and accessibility improvements, and read each markup as a change request.
+- The designer's notes are settled. Don't repeat them as questions; suggest only the parts they leave open, and read each part through them (if a note says "this list is my saved cards", ask about the cards, not about transactions).
 - title is a 1 to 4 word name for this screen.`;
 
 // The design rules below are paraphrased from four open design references the designer pointed to:
@@ -57,7 +60,7 @@ Output a single React function component named App written in JSX, with no impor
 ${UI_KIT}
 
 How to work:
-1. Read the sketch and notes. They decide what is on the screen and in what order. Notes override the sketch. Notes may carry a tag: [UI] is what to show, [Interaction] is what happens on tap, swipe or input, [Motion] is how it moves, [Copy] is the wording, [Data] is the content or numbers. Notes may say where on the frame they point; use that to match each note to the right part.
+1. Read the sketch and notes. They decide what is on the screen and in what order. Notes override the sketch. The project brief describes the whole app and is background: if this screen is a profile, settings or another part of the app, build that, and don't pull the brief's main feature onto it. Notes may carry a tag: [UI] is what to show, [Interaction] is what happens on tap, swipe or input, [Motion] is how it moves, [Copy] is the wording, [Data] is the content or numbers. Notes may say where on the frame they point; use that to match each note to the right part.
 2. Before the code, write plan: the screen's one job; its archetype (feed, detail, onboarding, profile, form or checkout, focus, settings); the navigation (tab bar, pushed detail, sheet); the one signature element that makes it this product (the route map, the streak calendar, the ledger); and how each note will be met.
 3. Build it with the kit. Where the sketch is unclear, choose the standard iOS pattern instead of inventing one.
 

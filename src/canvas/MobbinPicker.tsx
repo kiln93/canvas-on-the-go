@@ -229,13 +229,12 @@ export const openMobbin = (frameId: string) => set({ mobbinFor: frameId, mobbinN
 
 const SUGGEST = 3;
 
-/** What to search Mobbin for: the screen's name plus the start of the project brief. */
+/** What to search Mobbin for: the screen's name, or the start of the project brief while it has none. */
 export function suggestQuery(f: Frame, brief: string) {
+  // A named screen searches for itself: a "User profile" screen in a wallet app wants profile screens, not wallets.
   const name = f.name && !/^untitled/i.test(f.name) ? f.name.trim() : "";
-  const about = brief.trim().split(/\s+/).slice(0, 8).join(" ");
-  const seen = new Set<string>();
-  const words = `${name} ${about}`.split(/\s+/).filter((w) => w && !seen.has(w.toLowerCase()) && seen.add(w.toLowerCase()));
-  return words.join(" ").slice(0, 80);
+  if (name) return name.slice(0, 80);
+  return brief.trim().split(/\s+/).slice(0, 8).join(" ").slice(0, 80);
 }
 
 /**
@@ -258,7 +257,10 @@ export async function suggestRefs(frameId: string): Promise<string> {
         ...top.map((r) => ({ id: uid(), url: r.image, link: r.link, title: r.title, note: "", suggested: true })),
       ].slice(0, MAX_REFS),
     }));
-    return top.length ? "" : "Mobbin found nothing for this screen yet. Name the screen, then tap Find on Mobbin.";
+    if (top.length) return "";
+    return f.name && !/^untitled/i.test(f.name)
+      ? `Mobbin found nothing for “${f.name.trim()}”. Tap Find on Mobbin to try other words.`
+      : "Mobbin found nothing for this screen yet. Name the screen, then tap Find on Mobbin.";
   } catch (e) {
     updateFrame(frameId, () => ({ refsSuggested: false }));
     return `Couldn't suggest references: ${(e as Error).message}`;

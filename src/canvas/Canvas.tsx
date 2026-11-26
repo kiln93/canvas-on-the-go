@@ -639,8 +639,8 @@ function FocusBar({ frame: f, onDone, onPlay }: { frame: Frame; onDone: () => vo
           Notes{live.length ? ` · ${live.length}` : ""}
         </button>
         {!f.code && sketched && (
-          <button className="btn focus-suggest" disabled={!!f.busy} onClick={() => runSuggest(f.id)}>
-            Suggest
+          <button className="btn focus-suggest" disabled={!!f.busy} onClick={() => runSuggest(f.id)} title="Suggest what each part is, reading your notes">
+            ✓ Done sketching
           </button>
         )}
         {buildInputs(f).any && (
@@ -702,7 +702,7 @@ function ScreenMenu({ frame: f, onPlay, onDeleted }: { frame: Frame; onPlay: () 
             <>
               {!f.code && f.strokes.some((s) => s.kind === "sketch") && (
                 <button role="menuitem" disabled={!!f.busy} onClick={() => (close(), runSuggest(f.id))}>
-                  Suggest notes from the sketch
+                  Done sketching: suggest notes
                 </button>
               )}
               {f.code && (

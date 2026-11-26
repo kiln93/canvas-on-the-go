@@ -199,9 +199,14 @@ export async function suggest(req: SuggestRequest): Promise<SuggestResponse> {
     {
       type: "text",
       text: [
-        `Project brief: ${req.brief || "(none yet)"}`,
-        `Surface: ${req.surfaceName || "untitled"} on ${req.device}`,
+        `This screen: ${req.surfaceName || "untitled"} on ${req.device}`,
+        req.notes?.length
+          ? `The designer's notes on this screen. They say what it is; follow them and don't suggest what they already cover:\n${req.notes
+              .map((n, i) => `${i + 1}. ${n}`)
+              .join("\n")}`
+          : "The designer hasn't written notes on this screen yet.",
         `Stage: ${req.stage}`,
+        `Background, the brief for the whole app: ${req.brief || "(none yet)"}. This screen may be a different part of the app from the brief's main feature (a profile, settings, onboarding). Use the brief only for tone and product context; don't steer this screen toward the brief's main feature.`,
         req.code ? `Current screen code:\n${req.code}` : "",
       ]
         .filter(Boolean)
@@ -271,9 +276,9 @@ async function generateOnce(
   content.push({
     type: "text",
     text: [
-      `Project brief: ${req.brief || "(none)"}`,
-      `Surface: ${req.surfaceName || "untitled"}`,
+      `This screen: ${req.surfaceName || "untitled"}`,
       `Frame: ${req.device}, ${req.width}x${req.height}px`,
+      `Background, the brief for the whole app: ${req.brief || "(none)"}. This screen may be a different part of the app from the brief's main feature; it is what the sketch and notes describe, and the brief only sets tone, content and product context.`,
       `Design system: ${req.designSystem}`,
       req.notes.length
         ? `Confirmed notes. Each one is a change the designer is asking for now${
@@ -349,9 +354,9 @@ export async function review(req: ReviewRequest, onProgress?: (p: Progress) => v
   content.push({
     type: "text",
     text: [
-      `Project brief: ${req.brief || "(none)"}`,
-      `Surface: ${req.surfaceName || "untitled"}`,
+      `This screen: ${req.surfaceName || "untitled"}`,
       `Frame: ${req.device}, ${req.width}x${req.height}px`,
+      `Background, the brief for the whole app: ${req.brief || "(none)"}. This screen may be a different part of the app from the brief's main feature; it is what the sketch and notes describe, and the brief only sets tone, content and product context.`,
       req.notes.length ? `Designer's notes:\n${req.notes.map((n) => `- ${n}`).join("\n")}` : "No notes.",
       req.instruction ? `Instruction the screen was built for: ${req.instruction}` : "",
       req.image ? "The image is the designer's sketch (or markups) the screen was built from." : "",
@@ -418,8 +423,8 @@ export async function planVariations(req: VariationsRequest): Promise<Variations
       {
         role: "user",
         content: [
-          `Project brief: ${req.brief || "(none)"}`,
           `Screen: ${req.surfaceName} on ${req.device}`,
+          `Background, the brief for the whole app (this screen may be a different part of it): ${req.brief || "(none)"}`,
           req.existing.length ? `Already exists: ${req.existing.join(", ")}` : "",
           `Screen code:\n${req.code}`,
         ]

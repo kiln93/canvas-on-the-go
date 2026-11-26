@@ -14,7 +14,7 @@ import type {
 } from "../server/types";
 import { rasterize } from "./canvas/ink";
 import { useSyncExternalStore } from "react";
-import { addFrame, addSpend, DEVICES, getState, NOTE_TAGS, updateFrame, type Frame } from "./store";
+import { addFrame, addSpend, DEVICES, getState, NOTE_TAGS, updateFrame, type Frame, type NoteItem } from "./store";
 
 // Live progress for frames that are busy. Kept out of the saved project: it's only true right now.
 export type FrameProgress = {
@@ -68,6 +68,15 @@ function overCap() {
 
 const CAP_MSG = "You've reached this month's AI spending cap. Raise it from the meter at the top right.";
 
+/** One note as Claude reads it: its tag, its text, and where on the frame it points. */
+function noteLine(n: NoteItem) {
+  const tag = NOTE_TAGS.find((t) => t.id === n.tag)?.label;
+  const where = n.region
+    ? ` (at ${Math.round(n.region.x * 100)}%,${Math.round(n.region.y * 100)}% of the frame, ${Math.round(n.region.w * 100)}%×${Math.round(n.region.h * 100)}%)`
+    : "";
+  return `${tag ? `[${tag}] ` : ""}${n.text}${where}`;
+}
+
 /** Reads the sketch (or markups) and fills the frame's note with suggestions. */
 export async function runSuggest(id: string) {
   const f = frame(id);
@@ -86,6 +95,8 @@ export async function runSuggest(id: string) {
       image,
       stage,
       code: f.code,
+      // The designer's own notes, and suggestions they already confirmed, so Claude reads the sketch through them.
+      notes: f.notes.filter((n) => n.status === "accepted" || (n.mine && n.status === "pending")).map(noteLine),
     };
     const out = await post<SuggestResponse>("/api/suggest", req);
     addSpend(out.usage);
@@ -168,14 +179,7 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
   const previousCode = baseCode ?? f.code;
   const image = rasterize(f, previousCode && f.code ? "markup" : "sketch");
   const sent = f.notes.filter((n) => n.status === "accepted");
-  const notes = sent
-    .map((n) => {
-      const tag = NOTE_TAGS.find((t) => t.id === n.tag)?.label;
-      const where = n.region
-        ? ` (at ${Math.round(n.region.x * 100)}%,${Math.round(n.region.y * 100)}% of the frame, ${Math.round(n.region.w * 100)}%×${Math.round(n.region.h * 100)}%)`
-        : "";
-      return `${tag ? `[${tag}] ` : ""}${n.text}${where}`;
-    });
+  const notes = sent.map(noteLine);
   // New or changed references are reason enough to rebuild.
   const refsChanged = buildInputs(f).refs;
   if (!image && !notes.length && !instruction && refsChanged && f.code)
