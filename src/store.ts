@@ -52,8 +52,10 @@ export type Frame = {
   error?: string;
   /** What the review pass found and fixed in the latest build. */
   review?: { verdict: "ship" | "fix" | "skipped"; findings: string[]; at: number };
-  /** Set on a surface's primary frame once its variations have been planned, so it happens once. */
+  /** Set on a surface's primary frame once its variations have been planned. */
   variationsPlanned?: boolean;
+  /** Variations Claude suggested for this screen, waiting for the designer to pick which to build. */
+  variationPlan?: { name: string; instruction: string }[];
 };
 
 export type Project = {

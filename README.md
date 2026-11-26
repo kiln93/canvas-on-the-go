@@ -5,15 +5,15 @@ A lightweight design canvas for iPad (and any browser). Sketch a screen with App
 ## How it works
 
 1. **Project brief.** Describe what you're building once. Every AI call uses it as context.
-2. **Pick a device and draw.** Choose iPhone, iPad or desktop, then tap or drag with the frame tool. The new frame zooms in to fill the screen so there's room to draw. Draw freely: strokes can run past the frame's edge, and a stroke on empty canvas starts a new frame. **✎ Draw** on any frame zooms back in.
+2. **New screen, then draw.** Tap **+ New screen** and pick iPhone, iPad or desktop. The screen opens as a full-width drawing sheet. The Pencil draws (fingers too, until a Pencil is used); two fingers scroll. **✎ Draw** on any frame opens it again. The canvas itself never draws: drag to move around, pinch to zoom, tap a screen to select it, hold one to move it.
 3. **Sketch, then tap ✓ Done sketching.** Claude reads the sketch and fills the note card beside the frame with suggestions ("Is this a header?"), numbered to match callouts on the sketch.
 4. **Leave notes where they belong.** Press and hold the pen on any part of a sketch or a live screen to leave a note on just that part (on a live screen it picks the exact component). Tag each note **UI**, **Interaction**, **Motion**, **Copy** or **Data**, and type or dictate it. Accept, edit or dismiss Claude's suggestions too.
 5. **Generate.** The frame becomes a live React screen built on iOS patterns (large titles, tab bars, grouped lists, sheets) with realistic content. The sketch hides; **Show sketch** brings it back. Notes that went into the build move to **History**, where **Reuse** puts one back.
 6. **Mark it up.** Draw over a live screen (strokes turn red), or press and hold to note a component, then **Rebuild**. **Undo version** steps back.
-7. **Open surface.** The first time you open a surface with a built screen, Claude plans the states worth designing for it (empty, offline, a product-specific edge case…) and builds each as a variation. **Suggest more states** asks for more; **+ Variation** makes one you describe.
+7. **Open surface.** **Suggest variations** asks Claude which states are worth designing (empty, offline, a product-specific edge case…) and shows them with their cost; only the ones you tick are built. **+ Variation** makes one you describe.
 8. **▶ Play** opens the screen full size so you can click through it.
 
-Every build gets a second look: a fresh Claude reviews the screen against the design skills in `server/skills` (Anthropic's frontend-design, plus guides from impeccable, hallmark and open-design) and fixes what fails. **Reviewed: fixed N things** under the screen lists what changed.
+Every build is checked by `server/lint.ts`. When the checks find a problem, a fresh Claude reviews the screen against the design skills in `server/skills` (Anthropic's frontend-design, plus guides from impeccable, hallmark and open-design) and fixes it. **Reviewed: fixed N things** under the screen lists what changed.
 
 While Claude works, the frame shows what it's doing and how far along it is, with an orb, a beam around the frame, a pixel mosaic while the screen is written, and a wave that reveals the finished screen.
 
@@ -67,7 +67,7 @@ The key stays on the server (`api/*.ts`). The browser never sees it.
 
 ## Costs
 
-All calls use Claude Opus 5.5 ($4 per million input tokens, $20 per million output). The meter in the top bar estimates this month's spend from real token counts and stops new AI calls at your cap ($50 by default, editable).
+Screens are built with Claude Sonnet 5.5 at medium effort ($2 per million input tokens, $10 per million output); set `BUILD_MODEL=claude-opus-5-5` to build with Opus. A new screen costs about 15¢. Variations, markups and rebuilds send only the changed lines (find/replace edits), about 5¢. Nothing paid runs without a tap, and buttons show the estimate. The meter in the top bar estimates this month's spend from real token counts (cache reads and writes at their own prices) and stops new AI calls at your cap ($50 by default, editable).
 
 ## Not in this slice yet
 

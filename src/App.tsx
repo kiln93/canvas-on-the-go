@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
-import { importPrd, runVariations } from "./api";
+import { importPrd } from "./api";
 import { Canvas, type Tool } from "./canvas/Canvas";
 import { frameHtml } from "./runtime/frameHtml";
 import { DEVICES, getState, redo, set, setBrief, undo, useStore, type DeviceId } from "./store";
 import { Tutorial } from "./Tutorial";
 
 export function App() {
-  const [tool, setTool] = useState<Tool>("frame");
-  const [device, setDevice] = useState<DeviceId>("iphone");
+  const [tool, setTool] = useState<Tool>("pen");
   const [playing, setPlaying] = useState<string | null>(null);
   const tutorialDone = useStore((s) => s.tutorialDone);
   const brief = useStore((s) => s.project.brief);
@@ -22,7 +21,7 @@ export function App() {
         e.preventDefault();
         return e.shiftKey ? redo() : undo();
       }
-      const map: Record<string, Tool> = { v: "select", p: "pen", e: "eraser", f: "frame" };
+      const map: Record<string, Tool> = { p: "pen", e: "eraser" };
       if (map[e.key]) setTool(map[e.key]);
       if (e.key === "Escape") set({ selectedId: null });
     };
@@ -30,37 +29,23 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // The first time you open a surface with a built screen, design its other states too.
-  const surfaceId = useStore((s) => s.surfaceId);
-  useEffect(() => {
-    if (!surfaceId) return;
-    const { frames } = getState().project;
-    const primary = frames.find((f) => f.id === surfaceId);
-    const hasVariations = frames.some((f) => f.surfaceId === surfaceId && f.id !== surfaceId);
-    if (primary?.code && !primary.variationsPlanned && !hasVariations) runVariations(surfaceId);
-  }, [surfaceId]);
-
-  // "Draw" on a frame picks up the pen (the canvas zooms in on it).
+  // Opening a screen to draw picks up the pen.
   useEffect(() => {
     const pen = () => setTool("pen");
     window.addEventListener("cotg:focus", pen);
-    return () => window.removeEventListener("cotg:focus", pen);
+    window.addEventListener("cotg:new-screen", pen);
+    return () => {
+      window.removeEventListener("cotg:focus", pen);
+      window.removeEventListener("cotg:new-screen", pen);
+    };
   }, []);
-
-  // After a frame is created, switch to the pen so you can sketch straight away.
-  const frameCount = useStore((s) => s.project.frames.length);
-  const [lastCount, setLastCount] = useState(frameCount);
-  useEffect(() => {
-    if (frameCount > lastCount && tool === "frame") setTool("pen");
-    setLastCount(frameCount);
-  }, [frameCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="app">
       <TopBar onEditBrief={() => setEditingBrief(true)} />
       <KeyBanner />
-      <Canvas tool={tool} device={device} onPlay={setPlaying} />
-      <Toolbar tool={tool} setTool={setTool} device={device} setDevice={setDevice} />
+      <Canvas tool={tool} onPlay={setPlaying} />
+      <Toolbar tool={tool} setTool={setTool} />
       {playing && <Preview id={playing} onClose={() => setPlaying(null)} />}
       {!tutorialDone && <Tutorial onDone={() => set({ tutorialDone: true })} />}
       {tutorialDone && (!brief || editingBrief) && (
@@ -175,7 +160,7 @@ function CostMeter() {
       {open && (
         <div className="menu meter-pop">
           <p className="small">
-            AI spend this month, estimated from tokens at Claude Opus 5.5 prices ($4 in, $20 out per million).
+            AI spend this month, estimated from the tokens each call used, at Anthropic’s list prices.
           </p>
           <label className="small">
             Monthly cap ($)
@@ -193,52 +178,67 @@ function CostMeter() {
 }
 
 const TOOLS: { id: Tool; label: string; key: string; icon: string }[] = [
-  { id: "select", label: "Select and move", key: "V", icon: "M5 3l14 8-6 2-2 6z" },
   { id: "pen", label: "Pencil", key: "P", icon: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" },
   { id: "eraser", label: "Eraser", key: "E", icon: "M20 20H8l-5-5 10-10 7 7-8 8M14 6l6 6" },
-  { id: "frame", label: "Frame", key: "F", icon: "M6 2v20M18 2v20M2 6h20M2 18h20" },
 ];
 
-function Toolbar(props: {
-  tool: Tool;
-  setTool: (t: Tool) => void;
-  device: DeviceId;
-  setDevice: (d: DeviceId) => void;
-}) {
+const Svg = ({ d }: { d: string }) => (
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d={d} />
+  </svg>
+);
+
+/**
+ * On the canvas: one big "New screen" button (pick the device, then you're drawing) and undo.
+ * In the drawing view: Pencil, eraser, undo and redo. There are no modes to get stuck in on the canvas.
+ */
+function Toolbar(props: { tool: Tool; setTool: (t: Tool) => void }) {
+  const drawing = useStore((s) => !!s.focusId);
+  const [picking, setPicking] = useState(false);
+  const pickRef = useCloseOnOutsideTap(picking, () => setPicking(false));
+  const newScreen = (d: DeviceId) => {
+    setPicking(false);
+    window.dispatchEvent(new CustomEvent("cotg:new-screen", { detail: d }));
+  };
   return (
     <div className="toolbar" data-ui>
-      {TOOLS.map((t) => (
-        <button
-          key={t.id}
-          className={`tool ${props.tool === t.id ? "active" : ""}`}
-          onClick={() => props.setTool(t.id)}
-          aria-label={`${t.label} (${t.key})`}
-          title={`${t.label} (${t.key})`}
-        >
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d={t.icon} />
-          </svg>
-        </button>
-      ))}
-      {props.tool === "frame" && (
-        <div className="devices">
-          {(Object.keys(DEVICES) as DeviceId[]).map((d) => (
-            <button key={d} className={`chip ${props.device === d ? "active" : ""}`} onClick={() => props.setDevice(d)}>
-              {DEVICES[d].label}
-            </button>
-          ))}
+      {drawing ? (
+        TOOLS.map((t) => (
+          <button
+            key={t.id}
+            className={`tool ${props.tool === t.id ? "active" : ""}`}
+            onClick={() => props.setTool(t.id)}
+            aria-label={`${t.label} (${t.key})`}
+            title={`${t.label} (${t.key})`}
+          >
+            <Svg d={t.icon} />
+          </button>
+        ))
+      ) : (
+        <div className="new-screen" ref={pickRef}>
+          <button className="btn ink new-screen-btn" onClick={() => setPicking((p) => !p)} aria-expanded={picking}>
+            + New screen
+          </button>
+          {picking && (
+            <div className="device-sheet" role="menu">
+              {(Object.keys(DEVICES) as DeviceId[]).map((d) => (
+                <button key={d} role="menuitem" onClick={() => newScreen(d)}>
+                  <span>{DEVICES[d].label}</span>
+                  <span className="muted small">
+                    {DEVICES[d].w} × {DEVICES[d].h}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
       <span className="divider" />
       <button className="tool" onClick={undo} aria-label="Undo" title="Undo (two-finger tap)">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-          <path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3" />
-        </svg>
+        <Svg d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3" />
       </button>
       <button className="tool" onClick={redo} aria-label="Redo" title="Redo (three-finger tap)">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-          <path d="m15 14 5-5-5-5M20 9H9a5 5 0 0 0 0 10h3" />
-        </svg>
+        <Svg d="m15 14 5-5-5-5M20 9H9a5 5 0 0 0 0 10h3" />
       </button>
     </div>
   );

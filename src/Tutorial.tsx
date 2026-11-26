@@ -6,28 +6,28 @@ const STEPS = [
     body: "Sketch screens with your Pencil, confirm what they are, and get live, clickable React screens built from shadcn.",
   },
   {
-    title: "Start a surface",
-    body: "Pick the frame tool and drag a rough rectangle. It snaps to iPhone, iPad or desktop. The pen tool turns on right after, so you can sketch inside.",
+    title: "Start a screen",
+    body: "Tap New screen and pick iPhone, iPad or desktop. It opens as a full-screen sheet, ready to draw on.",
   },
   {
-    title: "Sketch, then tap ✓",
-    body: "Draw boxes, lines and handwriting. An X in a box is an image, wavy lines are text, a circle is an avatar. Tap “Done sketching” and suggestions appear in the note beside the frame.",
+    title: "Sketch, then Suggest",
+    body: "Draw boxes, lines and handwriting. An X in a box is an image, wavy lines are text, a circle is an avatar. Press and hold on any part to leave a note there. Tap Suggest and Claude labels what you drew.",
   },
   {
     title: "Confirm and generate",
-    body: "Accept, edit or dismiss each suggestion, or write or say your own. Then tap Generate. The sketch stays until you approve the result.",
+    body: "Open Notes to accept, edit or dismiss each suggestion, or write or say your own. Then tap Generate. Done takes you back to the canvas.",
   },
   {
     title: "Mark it up",
-    body: "Draw over a generated screen to change it. Arrows move things, crossing out removes them, handwriting says what to do. Tap “Apply markups”.",
+    body: "Tap Mark up on a built screen and draw over it. Arrows move things, crossing out removes them, handwriting says what to do. Then tap Rebuild.",
   },
   {
     title: "Dive into a surface",
-    body: "Double-tap a surface, or tap “Open surface”, to see all its variations: empty, loading, error and anything you describe. Overview takes you back.",
+    body: "Tap Open surface to see its variations. Suggest variations lists states worth designing, with the cost, and builds only the ones you pick.",
   },
   {
     title: "Gestures",
-    body: "Pencil draws. One finger pans, two fingers pinch to zoom. Two-finger tap undoes, three-finger tap redoes. On a keyboard: V, P, E, F switch tools.",
+    body: "On the canvas nothing draws: drag to move around, pinch to zoom, tap a screen to select it, hold one to move it. In a screen, the Pencil draws and two fingers scroll. Two-finger tap undoes.",
   },
 ];
 

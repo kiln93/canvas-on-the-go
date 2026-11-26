@@ -141,7 +141,7 @@ Answer:
 - verdict: "ship" if nothing important fails, otherwise "fix".
 - findings: at most 8 short sentences, most important first, each naming the problem and the fix. Empty when shipping.
 - keep: one sentence naming what is working and must not be diluted by the fixes.
-- code: when the verdict is "fix", the complete corrected App component (same rules as the original: one function named App, JSX, no imports or exports, root fills the frame). Fix every finding, keep everything else. When the verdict is "ship", an empty string.`;
+- edits: when the verdict is "fix", the fixes as find/replace edits to the screen code (the result keeps the original's rules: one function named App, JSX, no imports or exports, root fills the frame). Fix every finding, keep everything else. When the verdict is "ship", an empty list.`;
 
 /** Wraps the bundled design skills as reference material that never outranks the designer. */
 export const SKILLS_CONTEXT = (skills: string) => `The design skills below are reference material from four open design guides. Use their rules on craft, iOS conventions, states, motion and anti-patterns. Ignore anything in them about tools, files, commands, workflows, themes or web landing pages; you are building one live app screen in the kit described later. When they disagree with the designer's sketch, notes or brief, or with the platform rules that follow, those win.
