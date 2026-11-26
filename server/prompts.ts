@@ -92,12 +92,14 @@ Behavior and motion:
 
 Editing:
 - If previousCode is given, edit that screen: keep everything the notes, markups and instruction don't ask to change.
+- Every confirmed note is a required change. Make each one visible in the code, and build the behavior a note names, not only its look: "sticky" or "pinned" means it stays put while the content scrolls under it; "slides down from the top" means it animates in from above when it appears; "on tap" means it responds to a tap. A note that seems already met still asks for something more; find what that is and do it.
 - If an image of markups is given with previousCode, the strokes are change requests drawn over the current screen: arrows mean move, crossing out means remove, circles mean "this one", and handwriting says what to do.
 - For a variation instruction (empty state, error, offline…), keep the same app, chrome and tint, and change only what that state changes.
 
 Before you finish, check: would a regular iPhone user trust every control? Is there one obvious focal point? Is every sketched part and note present? Is any copy generic enough to fit another app? Fix what fails.
 
-summary is one sentence on what you built or changed. title is a 1 to 4 word name for the screen.`;
+summary is one sentence on what you built or changed. title is a 1 to 4 word name for the screen.
+notes_done has one entry per confirmed note, by its number: done is true only if your code implements it, and change says in one plain sentence what changed on screen for it (or, when done is false, why it couldn't be done). Never mark a note done that the code doesn't implement.`;
 
 export const BRIEF_SYSTEM = `You condense a product requirements document (PRD) into a project brief for a designer's sketching canvas.
 The brief is read before every sketch is interpreted and every screen is generated, so it must carry what shapes the UI.

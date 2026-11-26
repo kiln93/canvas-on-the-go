@@ -33,7 +33,14 @@ export type GenerateRequest = {
   designSystem: "shadcn";
 };
 
-export type GenerateResponse = { title: string; code: string; summary: string; usage: Usage };
+export type GenerateResponse = {
+  title: string;
+  code: string;
+  summary: string;
+  /** One entry per note (0-based, in the order sent): whether it was built, and what changed on screen. */
+  notesDone?: { note: number; done: boolean; change: string }[];
+  usage: Usage;
+};
 
 export type Usage = { input_tokens: number; output_tokens: number; cost: number };
 

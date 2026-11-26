@@ -154,8 +154,8 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
   if (overCap()) return updateFrame(id, { error: CAP_MSG });
   const previousCode = baseCode ?? f.code;
   const image = rasterize(f, previousCode && f.code ? "markup" : "sketch");
-  const notes = f.notes
-    .filter((n) => n.status === "accepted")
+  const sent = f.notes.filter((n) => n.status === "accepted");
+  const notes = sent
     .map((n) => {
       const tag = NOTE_TAGS.find((t) => t.id === n.tag)?.label;
       const where = n.region
@@ -239,10 +239,16 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
         name: cur.name || out.title,
         approved: false,
         showSketch: false, // the sketch did its job; "Show sketch" brings it back
-        // Notes that went into this build move to History, so the card only shows what's next.
-        notes: cur.notes.map((n) =>
-          n.status === "accepted" ? { ...n, status: "applied" as const, appliedAt: Date.now() } : n,
-        ),
+        // Notes Claude reports as built move to History with what changed; the others stay open, with why.
+        notes: cur.notes.map((n) => {
+          const i = sent.findIndex((s) => s.id === n.id);
+          if (i < 0 || n.status !== "accepted") return n;
+          const r = built.notesDone?.find((d) => d.note === i);
+          // An answer without a report (an older server) counts every note as built, as before.
+          if (!built.notesDone?.length || r?.done)
+            return { ...n, status: "applied" as const, appliedAt: Date.now(), change: r?.change, skipped: undefined };
+          return { ...n, skipped: r?.change || "Claude didn't get to this one. Rebuild to try again." };
+        }),
         // Markups have been applied, so clear them; the sketch stays until you approve.
         strokes: cur.code ? cur.strokes.filter((s) => s.kind !== "markup") : cur.strokes,
         versions: [...cur.versions, { code: out.code, summary: out.summary, at: Date.now() }],

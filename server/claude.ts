@@ -113,15 +113,27 @@ const suggestSchema = {
 };
 
 // plan comes first so the model decides the archetype, navigation and signature before writing code.
+/** After the code, Claude reports note by note what it changed, so a skipped note never looks built. */
+const notesDoneSchema = {
+  type: "array",
+  items: {
+    type: "object",
+    additionalProperties: false,
+    required: ["note", "done", "change"],
+    properties: { note: { type: "integer" }, done: { type: "boolean" }, change: { type: "string" } },
+  },
+};
+
 const generateSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["plan", "title", "summary", "code"],
+  required: ["plan", "title", "summary", "code", "notes_done"],
   properties: {
     plan: { type: "string" },
     title: { type: "string" },
     summary: { type: "string" },
     code: { type: "string" },
+    notes_done: notesDoneSchema,
   },
 };
 
@@ -138,12 +150,13 @@ const editsSchema = {
 const editSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["plan", "title", "summary", "edits"],
+  required: ["plan", "title", "summary", "edits", "notes_done"],
   properties: {
     plan: { type: "string" },
     title: { type: "string" },
     summary: { type: "string" },
     edits: editsSchema,
+    notes_done: notesDoneSchema,
   },
 };
 const EDIT_RULES = [
@@ -237,7 +250,11 @@ async function generateOnce(
       `Surface: ${req.surfaceName || "untitled"}`,
       `Frame: ${req.device}, ${req.width}x${req.height}px`,
       `Design system: ${req.designSystem}`,
-      req.notes.length ? `Confirmed notes:\n${req.notes.map((n) => `- ${n}`).join("\n")}` : "No notes.",
+      req.notes.length
+        ? `Confirmed notes. Each one is a change the designer is asking for now${
+            req.previousCode ? "; previousCode does not have it yet" : ""
+          }:\n${req.notes.map((n, i) => `${i + 1}. ${n}`).join("\n")}`
+        : "No notes.",
       req.instruction ? `Instruction: ${req.instruction}` : "",
       req.previousCode ? `previousCode:\n${req.previousCode}` : "",
       asEdits ? EDIT_RULES : "",
@@ -267,14 +284,18 @@ async function generateOnce(
   });
   onProgress?.({ phase: "thinking", chars: 0 });
   const msg = await stream.finalMessage();
+  type Done = { note: number; done: boolean; change: string }[];
+  // Note numbers are 1-based in the prompt; the app matches them back to its notes by position.
+  const notesDone = (d: Done | undefined) =>
+    (d ?? []).filter((x) => x.note >= 1 && x.note <= req.notes.length).map((x) => ({ ...x, note: x.note - 1 }));
   if (asEdits) {
-    const out = jsonText(msg) as { title: string; summary: string; edits: { find: string; replace: string }[] };
+    const out = jsonText(msg) as { title: string; summary: string; edits: { find: string; replace: string }[]; notes_done: Done };
     const code = applyEdits(req.previousCode ?? "", out.edits);
     if (code == null) return null;
-    return { title: out.title, summary: out.summary, code, usage: usageOf(msg) };
+    return { title: out.title, summary: out.summary, code, notesDone: notesDone(out.notes_done), usage: usageOf(msg) };
   }
-  const { plan: _plan, ...out } = jsonText(msg) as Omit<GenerateResponse, "usage"> & { plan: string };
-  return { ...out, usage: usageOf(msg) };
+  const out = jsonText(msg) as { title: string; summary: string; code: string; notes_done: Done };
+  return { title: out.title, summary: out.summary, code: out.code, notesDone: notesDone(out.notes_done), usage: usageOf(msg) };
 }
 
 const reviewSchema = {

@@ -27,6 +27,10 @@ export type NoteItem = Suggestion & {
   mine?: boolean;
   appliedAt?: number;
   tag?: NoteTag;
+  /** What Claude says it changed on screen for this note, once built. */
+  change?: string;
+  /** Why the last build didn't do this note; it stays open for the next one. */
+  skipped?: string;
 };
 
 export type Version = { code: string; summary: string; at: number };
@@ -72,6 +76,8 @@ type State = {
   tutorialDone: boolean;
   /** The frame open in the focused drawing view, if any. Never restored on reload. */
   focusId: string | null;
+  /** The drawing view's notes panel (docked on the right on wide screens, a sheet on phones). */
+  notesOpen: boolean;
 };
 
 const KEY = "cotg.v1";
@@ -84,6 +90,7 @@ function load(): State {
     selectedId: null,
     tutorialDone: false,
     focusId: null,
+    notesOpen: false,
   };
   try {
     const raw = localStorage.getItem(KEY);
@@ -95,7 +102,7 @@ function load(): State {
       f.error = undefined;
     });
     if (saved.project.spend.month !== month()) saved.project.spend = { month: month(), cost: 0 };
-    return { ...empty, ...saved, selectedId: null, focusId: null };
+    return { ...empty, ...saved, selectedId: null, focusId: null, notesOpen: false };
   } catch {
     return empty;
   }
