@@ -23,11 +23,39 @@ export class MobbinError extends Error {
   }
 }
 
-const mobbinUrl = (u: string) => {
-  const url = new URL(u);
-  if (url.protocol !== "https:" || !MOBBIN_HOST.test(url.hostname)) throw new MobbinError(400, "That isn't a Mobbin address.");
-  return url.toString();
-};
+const PRM_URLS = ["https://api.mobbin.com/.well-known/oauth-protected-resource/mcp", "https://api.mobbin.com/.well-known/oauth-protected-resource"];
+
+/**
+ * Hosts Mobbin itself names as its sign-in servers (its protected-resource document on api.mobbin.com).
+ * Mobbin signs people in through a separate auth host (Supabase), so that host is trusted only because Mobbin lists it.
+ */
+let authHosts: Set<string> | null = null;
+async function trustedAuthHosts(prm?: Record<string, unknown> | null) {
+  if (!prm && authHosts) return authHosts;
+  for (const u of PRM_URLS) if (prm || (prm = await getJson(u))) break;
+  const hosts = ((prm?.authorization_servers as string[] | undefined) ?? []).flatMap((a) => {
+    try {
+      const h = new URL(a);
+      return h.protocol === "https:" ? [h.hostname] : [];
+    } catch {
+      return [];
+    }
+  });
+  authHosts = new Set(hosts);
+  return authHosts;
+}
+
+/** Only Mobbin's own hosts, or the sign-in hosts Mobbin names, may be called with a user's codes or tokens. */
+async function mobbinUrl(u: string) {
+  let url: URL;
+  try {
+    url = new URL(u);
+  } catch {
+    throw new MobbinError(400, "Mobbin gave an address that couldn't be read.");
+  }
+  if (url.protocol === "https:" && (MOBBIN_HOST.test(url.hostname) || (await trustedAuthHosts()).has(url.hostname))) return url.toString();
+  throw new MobbinError(400, `Mobbin's sign-in pointed to ${url.hostname}, which Mobbin doesn't list as its sign-in server.`);
+}
 
 async function getJson(url: string): Promise<Record<string, unknown> | null> {
   try {
@@ -48,9 +76,12 @@ async function discover() {
     // fall through to the well-known locations
   }
   let prm: Record<string, unknown> | null = null;
-  for (const u of [hinted, "https://api.mobbin.com/.well-known/oauth-protected-resource/mcp", "https://api.mobbin.com/.well-known/oauth-protected-resource"]) {
+  // The hint comes from Mobbin's own server, but only follow it to a Mobbin address.
+  const hint = hinted && /^https:\/\/([a-z0-9-]+\.)*mobbin\.com\//i.test(hinted) ? hinted : undefined;
+  for (const u of [hint, ...PRM_URLS]) {
     if (u && (prm = await getJson(u))) break;
   }
+  await trustedAuthHosts(prm);
   const issuer = String((prm?.authorization_servers as string[] | undefined)?.[0] ?? "https://api.mobbin.com");
   const iu = new URL(issuer);
   const path = iu.pathname === "/" ? "" : iu.pathname.replace(/\/$/, "");
@@ -63,7 +94,7 @@ async function discover() {
     if ((as = await getJson(u))) break;
   }
   if (!as?.authorization_endpoint || !as?.token_endpoint) throw new MobbinError(502, "Couldn't find Mobbin's sign-in page. Try again later.");
-  return { resource: String(prm?.resource ?? MCP_URL), as };
+  return { resource: String(prm?.resource ?? MCP_URL), as, scopesNeeded: prm?.scopes_supported as string[] | undefined };
 }
 
 const b64url = (buf: ArrayBuffer | Uint8Array) =>
@@ -71,10 +102,10 @@ const b64url = (buf: ArrayBuffer | Uint8Array) =>
 
 /** Step 1: register this app with Mobbin and build the sign-in link (with PKCE). */
 async function begin(redirectUri: string) {
-  const { resource, as } = await discover();
+  const { resource, as, scopesNeeded } = await discover();
   let clientId = "";
   if (as.registration_endpoint) {
-    const r = await fetch(mobbinUrl(String(as.registration_endpoint)), {
+    const r = await fetch(await mobbinUrl(String(as.registration_endpoint)), {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify({
@@ -94,8 +125,9 @@ async function begin(redirectUri: string) {
   const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
   const challenge = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
   const state = b64url(crypto.getRandomValues(new Uint8Array(16)));
-  const auth = new URL(mobbinUrl(String(as.authorization_endpoint)));
-  const scopes = (as.scopes_supported as string[] | undefined) ?? [];
+  const auth = new URL(await mobbinUrl(String(as.authorization_endpoint)));
+  // Ask for what Mobbin's MCP server says it needs (as MCP clients do), not everything the sign-in server offers.
+  const scopes = scopesNeeded ?? [];
   auth.search = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
@@ -110,7 +142,7 @@ async function begin(redirectUri: string) {
 }
 
 async function tokenCall(tokenEndpoint: string, params: Record<string, string>): Promise<MobbinTokens> {
-  const r = await fetch(mobbinUrl(tokenEndpoint), {
+  const r = await fetch(await mobbinUrl(tokenEndpoint), {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
     body: new URLSearchParams(params).toString(),
@@ -292,6 +324,7 @@ export async function fetchImage(url: string): Promise<{ data: string; type: "im
       const m = /^data:(image\/(png|jpeg|webp|gif));base64,(.+)$/.exec(url);
       return m ? { data: m[3], type: m[1] as "image/png" } : null;
     }
+    if (!url.startsWith("https://")) return null;
     const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
     const type = (r.headers.get("content-type") ?? "").split(";")[0];
     if (!r.ok || !/^image\/(png|jpeg|webp|gif)$/.test(type)) return null;
