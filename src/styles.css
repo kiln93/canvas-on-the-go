@@ -160,7 +160,7 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .history-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .history-list li { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: var(--text-muted); }
 .history-list .note-text { cursor: default; }
-.note-foot { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+.note-foot { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; justify-content: flex-end; }
 .variation {
   flex-basis: 100%; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-card); background: var(--surface);
   display: flex; flex-direction: column; gap: 8px;
@@ -192,11 +192,14 @@ input, textarea { -webkit-user-select: text; user-select: text; }
   background: var(--canvas); border-bottom: 1px solid var(--border);
 }
 .focus-bar .btn { height: 40px; white-space: nowrap; flex-shrink: 0; }
+.focus-cost-short { display: none; }
 .btn.ghost.focus-done { font-size: 16px; color: var(--accent); padding: 0 10px; }
 .focus-title { flex: 1; text-align: center; padding: 0 8px; font-weight: 500; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 @media (max-width: 500px) {
-  /* A phone's bar keeps only its actions; the frame itself shows which screen this is. */
-  .focus-title { visibility: hidden; padding: 0; }
+  /* A phone's bar is tight: the screen's actions sit behind a "•••" button instead of its name. */
+  .focus-title { padding: 0; justify-content: flex-start; }
+  .focus-title-btn > :not(.focus-title-more) { display: none; }
+  .screen-menu { left: 0; transform: none; }
 }
 /* The open frame needs no selection ring */
 .app.drawing .frame.selected { outline: none; }
@@ -426,4 +429,48 @@ button.tag { cursor: pointer; }
 .mobbin-shot span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mobbin-grid.wide { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .mobbin-grid.wide .mobbin-shot img { aspect-ratio: 16 / 10; }
+.mobbin-current { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.mobbin-current p { margin: 0; }
+.mobbin-grid.current { grid-template-columns: repeat(auto-fill, minmax(72px, 96px)); }
+.mobbin-shot.off img { opacity: 0.35; }
+.mobbin-shot.off span { text-decoration: line-through; }
 .mobbin-shot.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+
+/* References: thumbnails open a large view; full lists can still be changed */
+.ref-thumb { padding: 0; border: 0; background: none; cursor: pointer; flex-shrink: 0; }
+.ref-full { cursor: default; font-weight: 400; font-size: 12px; text-align: center; padding: 0 8px; }
+.ref-viewer { max-width: 520px; max-height: calc(100% - 32px); overflow-y: auto; }
+.ref-viewer img { width: 100%; max-height: 60vh; object-fit: contain; border-radius: 12px; border: 1px solid var(--border); background: #f0ede7; }
+.note-foot-hint { margin: 0 auto 0 0; flex-basis: 100%; }
+/* The drawing view's title opens the screen's actions */
+.focus-title.menu-wrap { overflow: visible; display: flex; justify-content: center; }
+.focus-title-btn { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 40px; padding: 0 10px; border: 0; border-radius: var(--r-btn); background: none; font: inherit; color: var(--ink); cursor: pointer; }
+.focus-title-btn:active, .focus-title-btn[aria-expanded="true"] { background: rgba(39, 37, 30, 0.06); }
+.focus-title-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.screen-menu { left: 50%; right: auto; transform: translateX(-50%); text-align: left; font-weight: 400; }
+.screen-menu > button { min-height: 44px; font: inherit; font-size: 14px; }
+.screen-menu > button.danger { color: #8a2b1d; }
+.screen-rename { display: flex; gap: 8px; padding: 4px; }
+.screen-rename input { flex: 1; min-width: 0; height: 40px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--r-input); font-size: 16px; }
+.focus-title-more { display: none; font-size: 16px; letter-spacing: 1px; }
+@media (max-width: 500px) { .focus-title-more { display: inline; } }
+.icon-btn.send { background: var(--ink); color: var(--canvas); border-color: var(--ink); }
+.icon-btn.send:disabled { background: none; color: var(--text-muted); border-color: var(--border); }
+.notes-chip { font: inherit; font-size: 12px; height: 24px; padding: 0 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--icon); cursor: pointer; pointer-events: auto; white-space: nowrap; }
+.mobbin-grid.current .mobbin-shot img { aspect-ratio: 3 / 4; }
+@media (max-width: 600px) { .mobbin-grid.current { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+a.btn { display: inline-flex; align-items: center; justify-content: center; color: var(--ink); text-decoration: none; }
+@media (max-width: 500px) {
+  /* Phone drawing bar: Done, •••, Notes, Suggest, Generate must fit in one row. */
+  .focus-title { flex: 0 0 auto; margin-right: auto; }
+  .focus-bar .btn { padding: 0 10px; }
+  .focus-cost { display: none; }
+  .focus-cost-short { display: inline; }
+}
+@media (max-width: 400px) {
+  .focus-suggest { display: none; } /* in the ••• menu instead */
+  .focus-bar { gap: 4px; }
+  .focus-bar .btn { padding: 0 8px; font-size: 13px; }
+  .btn.ghost.focus-done { padding: 0 4px; }
+  .focus-title-btn { padding: 0 6px; }
+}

@@ -16,6 +16,8 @@ export type SuggestRequest = {
   image: string; // base64 PNG, no data: prefix
   stage: "sketch" | "generated";
   code?: string;
+  /** What the designer has written or confirmed on this screen so far. */
+  notes?: string[];
 };
 
 export type SuggestResponse = { title: string; suggestions: Suggestion[]; usage: Usage };

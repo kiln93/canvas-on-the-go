@@ -1,3 +1,4 @@
+import { useCloseOnOutsideTap } from "./useCloseOnOutsideTap";
 import { MobbinPicker } from "./canvas/MobbinPicker";
 import { finishMobbinSignIn } from "./mobbin";
 import { shrinkImage } from "./images";
@@ -99,23 +100,6 @@ function KeyBanner() {
 }
 
 /** Closes a menu or popover when a tap lands anywhere outside it. */
-function useCloseOnOutsideTap(open: boolean, close: () => void) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const down = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) close();
-    };
-    const key = (e: KeyboardEvent) => e.key === "Escape" && close();
-    document.addEventListener("pointerdown", down, true);
-    document.addEventListener("keydown", key);
-    return () => {
-      document.removeEventListener("pointerdown", down, true);
-      document.removeEventListener("keydown", key);
-    };
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-  return ref;
-}
 
 function TopBar({ onEditBrief }: { onEditBrief: () => void }) {
   const surfaceId = useStore((s) => s.surfaceId);

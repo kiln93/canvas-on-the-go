@@ -5,7 +5,6 @@ import { frameHtml } from "../runtime/frameHtml";
 import { addFrame, deleteFrame, DEVICES, getState, set, updateFrame, type Frame } from "../store";
 import { strokePath } from "./ink";
 import { FrameBeam, FrameMosaic, FrameStatus, RevealWave } from "./FrameLoader";
-import { NoteCard } from "./NoteCard";
 import { registerFrame } from "./pick";
 
 export const FrameView = memo(function FrameView(props: {
@@ -68,6 +67,20 @@ export const FrameView = memo(function FrameView(props: {
             <span>{f.name || (f.primary ? "Untitled surface" : "Variation")}</span>
             <span className="muted">{DEVICES[f.device].label}</span>
             {f.code && !f.approved && <span className="pill">Review</span>}
+            {/* The notes open in the drawing view's panel; on the canvas a screen shows only how many there are,
+                so a note card never spreads over the next screen. */}
+            {notesSummary(f) && (
+              <button
+                data-ui
+                className="notes-chip"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent("cotg:focus", { detail: f.id }));
+                  set({ notesOpen: true });
+                }}
+              >
+                {notesSummary(f)}
+              </button>
+            )}
           </div>
         )}
         {f.code && (
@@ -256,15 +269,6 @@ export const FrameView = memo(function FrameView(props: {
         </div>
       )}
 
-      {/* In the focused view the notes live in a panel beside the drawing instead. */}
-      {!props.focused && (hasNotes || (!f.code && sketch.length > 0)) && (
-        <>
-          <svg className="tether" style={{ left: f.x + f.w, top: f.y + 40, width: 32, height: 2 }}>
-            <line x1="0" y1="1" x2="32" y2="1" />
-          </svg>
-          <NoteCard frame={f} style={{ left: f.x + f.w + 32, top: f.y, transform: `scale(${Math.min(ui, 2)})` }} />
-        </>
-      )}
     </>
   );
 });
@@ -346,4 +350,12 @@ function VariationPlan({ frame: f }: { frame: Frame }) {
     </div>,
     document.body,
   );
+}
+
+/** "2 notes · 4 references" for the chip above a screen on the canvas. */
+function notesSummary(f: Frame) {
+  const open = f.notes.filter((n) => n.status === "pending" || n.status === "accepted").length;
+  const refs = f.refs?.length ?? 0;
+  const parts = [open ? `${open} note${open > 1 ? "s" : ""}` : "", refs ? `${refs} reference${refs > 1 ? "s" : ""}` : ""].filter(Boolean);
+  return parts.join(" · ");
 }

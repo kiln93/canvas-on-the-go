@@ -73,6 +73,8 @@ export type Frame = {
   refs?: ScreenRef[];
   /** References were already suggested once for this screen, so removing them sticks. */
   refsSuggested?: boolean;
+  /** The references (and their captions) the current build was made with, so changing them can trigger a rebuild. */
+  refsBuilt?: string;
   /** Variations Claude suggested for this screen, waiting for the designer to pick which to build. */
   variationPlan?: { name: string; instruction: string }[];
 };

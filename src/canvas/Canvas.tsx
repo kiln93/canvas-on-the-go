@@ -20,10 +20,11 @@ import {
 import { FrameView } from "./FrameView";
 import { strokePath } from "./ink";
 import { NoteCard } from "./NoteCard";
+import { useCloseOnOutsideTap } from "../useCloseOnOutsideTap";
 import { NoteComposer, NoteTargetBox, type NoteTarget } from "./NoteComposer";
 import { primeKeyboard } from "./keyboard";
 import { pickInFrame } from "./pick";
-import { COST_ESTIMATE, dollars, runGenerate, runSuggest } from "../api";
+import { buildInputs, COST_ESTIMATE, dollars, runGenerate, runSuggest } from "../api";
 
 /** Drawing tools, used only in the drawing view. The canvas itself only moves and opens screens. */
 export type Tool = "pen" | "eraser";
@@ -63,6 +64,8 @@ export function Canvas(props: { tool: Tool; onPlay: (id: string) => void }) {
   const touchTap = useRef<{ t: number; max: number; moved: boolean } | null>(null);
   // A press on the canvas (not the drawing view): a tap selects, a drag pans, a hold on a frame picks it up.
   const press = useRef<{ t: number; x: number; y: number; moved: boolean; hitId: string | null } | null>(null);
+  // In the drawing view, a tap (finger or Pencil) on the screen picks the part under it and opens a note there.
+  const focusTap = useRef<{ t: number; x: number; y: number; wx: number; wy: number; hitId: string | null } | null>(null);
   const moveTimer = useRef<ReturnType<typeof setTimeout>>();
   const lastTap = useRef<{ t: number; id: string | null }>({ t: 0, id: null });
   const [live, setLive] = useState<Gesture>(null);
@@ -264,6 +267,7 @@ export function Canvas(props: { tool: Tool; onPlay: (id: string) => void }) {
     if (touches.length >= 2) {
       clearTimeout(moveTimer.current);
       press.current = null;
+      focusTap.current = null;
       const [a, b] = touches;
       gesture.current = {
         type: "pinch",
@@ -299,6 +303,7 @@ export function Canvas(props: { tool: Tool; onPlay: (id: string) => void }) {
 
     // The drawing view: the Pencil (and a mouse) always draws. Fingers draw too until a Pencil has been
     // used; after that a finger scrolls, so a resting palm never leaves marks.
+    focusTap.current = pointers.current.size === 1 ? { t: Date.now(), x: e.clientX, y: e.clientY, wx: w.x, wy: w.y, hitId: hit?.id ?? null } : null;
     if (isTouch && penSeen.current) {
       gesture.current = { type: "pan", sx: e.clientX, sy: e.clientY, cam: camRef.current };
       return;
@@ -421,6 +426,31 @@ export function Canvas(props: { tool: Tool; onPlay: (id: string) => void }) {
     }
     const g = gesture.current;
     const remainingTouches = [...pointers.current.values()].filter((t) => t.type === "touch").length;
+
+    // Drawing view: a tap on the screen (not a stroke, not a pinch) opens a note on the part tapped.
+    const ft = focusTap.current;
+    focusTap.current = null;
+    if (
+      focusId &&
+      ft?.hitId &&
+      pointers.current.size === 0 &&
+      Date.now() - ft.t < 400 &&
+      Math.hypot(e.clientX - ft.x, e.clientY - ft.y) < TAP_SLOP &&
+      (!g || g.type === "pan" || (g.type === "draw" && g.points.length < 6))
+    ) {
+      const hit = frames.find((f) => f.id === ft.hitId);
+      cancelHold();
+      gesture.current = null;
+      setLive(null);
+      touchTap.current = null;
+      if (hit) {
+        startNote(hit, ft.wx - hit.x, ft.wy - hit.y).then(() => {
+          const box = document.querySelector<HTMLInputElement>(".note-composer input");
+          if (box) box.focus();
+        });
+      }
+      return;
+    }
 
     // Two-finger tap undoes, three-finger tap redoes (when nothing moved).
     if (e.pointerType === "touch" && remainingTouches === 0 && touchTap.current) {
@@ -550,7 +580,7 @@ export function Canvas(props: { tool: Tool; onPlay: (id: string) => void }) {
             />
           ) : null;
         })()}
-      {focusId && frames[0] && <FocusBar frame={frames[0]} onDone={exitFocus} />}
+      {focusId && frames[0] && <FocusBar frame={frames[0]} onDone={exitFocus} onPlay={() => props.onPlay(frames[0].id)} />}
       {frames.length === 0 && (
         <div className="empty-hint">
           {surfaceId
@@ -585,7 +615,7 @@ const isTyping = (e: KeyboardEvent) => {
 };
 
 /** The bar above a frame in the focused drawing view: back to the canvas, the notes, and the next step. */
-function FocusBar({ frame: f, onDone }: { frame: Frame; onDone: () => void }) {
+function FocusBar({ frame: f, onDone, onPlay }: { frame: Frame; onDone: () => void; onPlay: () => void }) {
   const sketched = f.strokes.some((s) => s.kind === "sketch");
   const marked = f.strokes.some((s) => s.kind === "markup");
   const live = f.notes.filter((n) => n.status === "pending" || n.status === "accepted");
@@ -604,22 +634,20 @@ function FocusBar({ frame: f, onDone }: { frame: Frame; onDone: () => void }) {
         <button className="btn ghost focus-done" onClick={onDone}>
           ‹ Done
         </button>
-        <span className="focus-title">
-          {f.name || (f.primary ? "Untitled surface" : "Variation")}
-          <span className="muted"> · {DEVICES[f.device].label}</span>
-        </span>
+        <ScreenMenu frame={f} onPlay={onPlay} onDeleted={onDone} />
         <button className={`btn ${notesOpen ? "on" : ""}`} aria-expanded={notesOpen} onClick={() => setNotesOpen(!notesOpen)}>
           Notes{live.length ? ` · ${live.length}` : ""}
         </button>
         {!f.code && sketched && (
-          <button className="btn" disabled={!!f.busy} onClick={() => runSuggest(f.id)}>
-            Suggest
+          <button className="btn focus-suggest" disabled={!!f.busy} onClick={() => runSuggest(f.id)} title="Suggest what each part is, reading your notes">
+            ✓ Done sketching
           </button>
         )}
-        {(accepted > 0 || marked || (!f.code && sketched)) && (
+        {buildInputs(f).any && (
           <button className="btn ink" disabled={!!f.busy} onClick={() => runGenerate(f.id)}>
             {f.code ? "Rebuild" : "Generate"}
             <span className="focus-cost"> · {dollars(f.code ? COST_ESTIMATE.variation : COST_ESTIMATE.screen)}</span>
+            <span className="focus-cost-short"> · {dollars(f.code ? COST_ESTIMATE.variation : COST_ESTIMATE.screen).replace("about ", "~")}</span>
           </button>
         )}
       </header>
@@ -635,5 +663,91 @@ function FocusBar({ frame: f, onDone }: { frame: Frame; onDone: () => void }) {
         </div>
       )}
     </>
+  );
+}
+
+/** The screen's name in the drawing view's bar; tap it for the screen's actions (play, rename, undo a version). */
+function ScreenMenu({ frame: f, onPlay, onDeleted }: { frame: Frame; onPlay: () => void; onDeleted: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(f.name);
+  const ref = useCloseOnOutsideTap(open, () => (setOpen(false), setRenaming(false)));
+  const close = () => (setOpen(false), setRenaming(false));
+  const title = f.name || (f.primary ? "Untitled screen" : "Variation");
+  return (
+    <div className="focus-title menu-wrap" ref={ref}>
+      <button className="focus-title-btn" onClick={() => (setName(f.name), setOpen((o) => !o))} aria-expanded={open} aria-haspopup="menu">
+        <span className="focus-title-name">{title}</span>
+        <span className="muted"> · {DEVICES[f.device].label}</span>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+        <span className="focus-title-more" aria-label="Screen actions">•••</span>
+      </button>
+      {open && (
+        <div className="menu screen-menu" role="menu">
+          {renaming ? (
+            <form
+              className="screen-rename"
+              onSubmit={(e) => {
+                e.preventDefault();
+                updateFrame(f.id, { name: name.trim() }, true);
+                close();
+              }}
+            >
+              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-label="Screen name" placeholder="Screen name" />
+              <button className="btn ink">Save</button>
+            </form>
+          ) : (
+            <>
+              {!f.code && f.strokes.some((s) => s.kind === "sketch") && (
+                <button role="menuitem" disabled={!!f.busy} onClick={() => (close(), runSuggest(f.id))}>
+                  Done sketching: suggest notes
+                </button>
+              )}
+              {f.code && (
+                <button role="menuitem" onClick={() => (close(), onPlay())}>
+                  ▶ Play
+                </button>
+              )}
+              <button role="menuitem" onClick={() => (primeKeyboard(), setRenaming(true))}>
+                Rename
+              </button>
+              {f.code && !f.approved && (
+                <button
+                  role="menuitem"
+                  onClick={() => (close(), updateFrame(f.id, (cur) => ({ approved: true, strokes: cur.strokes.filter((s) => s.kind !== "sketch") }), true))}
+                >
+                  Approve this version
+                </button>
+              )}
+              {f.versions.length > 1 && (
+                <button
+                  role="menuitem"
+                  disabled={!!f.busy}
+                  onClick={() => {
+                    close();
+                    updateFrame(
+                      f.id,
+                      (cur) => {
+                        const versions = cur.versions.slice(0, -1);
+                        const prev = versions[versions.length - 1];
+                        return { versions, code: prev.code, summary: prev.summary };
+                      },
+                      true,
+                    );
+                  }}
+                >
+                  Undo version
+                </button>
+              )}
+              <button role="menuitem" className="danger" onClick={() => (close(), onDeleted(), deleteFrame(f.id))}>
+                Delete screen
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

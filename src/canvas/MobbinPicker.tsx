@@ -27,6 +27,8 @@ export function MobbinPicker() {
   const [resultKind, setResultKind] = useState<MobbinKind>("screens");
   const [said, setSaid] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
+  // The screen's current references; tap one to drop it, which makes room for new picks.
+  const [kept, setKept] = useState<string[]>([]);
 
   // Start from the screen's own name, so a search is one tap away.
   useEffect(() => {
@@ -36,12 +38,14 @@ export function MobbinPicker() {
     setKind("screens");
     setResults(null);
     setPicked([]);
+    setKept((f.refs ?? []).map((r) => r.id));
     setError(notice ?? "");
   }, [frameId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!f) return null;
-  // Suggested references make way for ones the designer picks.
-  const room = MAX_REFS - (f.refs ?? []).filter((r) => !r.suggested).length;
+  const current = f.refs ?? [];
+  const room = MAX_REFS - kept.length - picked.length;
+  const changed = picked.length > 0 || kept.length !== current.length;
   const close = () => set({ mobbinFor: null, mobbinNotice: undefined });
 
   const run = async () => {
@@ -54,7 +58,6 @@ export function MobbinPicker() {
       setResults(out.screens);
       setResultKind(kind);
       setSaid(out.said ?? "");
-      setPicked([]);
     } catch (e) {
       setError((e as Error).message);
       setConnected(mobbinConnected());
@@ -62,15 +65,24 @@ export function MobbinPicker() {
       setBusy(false);
     }
   };
-  const toggle = (img: string) =>
-    setPicked((p) => (p.includes(img) ? p.filter((x) => x !== img) : p.length < room ? [...p, img] : p));
-  const add = () => {
+  const toggle = (img: string) => {
+    if (picked.includes(img)) return setPicked(picked.filter((x) => x !== img));
+    if (current.some((r) => r.url === img && kept.includes(r.id))) return; // already on this screen
+    if (room > 0) return setPicked([...picked, img]);
+    // Full: a picked screen replaces the last suggested one, if any.
+    const drop = [...current].reverse().find((r) => r.suggested && kept.includes(r.id));
+    if (drop) {
+      setKept(kept.filter((id) => id !== drop.id));
+      setPicked([...picked, img]);
+    }
+  };
+  const toggleKept = (id: string) => setKept(kept.includes(id) ? kept.filter((x) => x !== id) : room > 0 ? [...kept, id] : kept);
+  const save = () => {
     const chosen = (results ?? []).filter((r) => picked.includes(r.image));
     updateFrame(f.id, (cur) => ({
       refs: [
-        ...(cur.refs ?? []).filter((r) => !r.suggested),
+        ...(cur.refs ?? []).filter((r) => kept.includes(r.id)),
         ...chosen.map((r) => ({ id: uid(), url: r.image, link: r.link, title: r.title, note: "" })),
-        ...(cur.refs ?? []).filter((r) => r.suggested && !chosen.some((c) => c.image === r.url)),
       ].slice(0, MAX_REFS),
     }));
     close();
@@ -142,6 +154,26 @@ export function MobbinPicker() {
           </>
         ) : (
           <>
+            {current.length > 0 && (
+              <div className="mobbin-current">
+                <p className="small muted">
+                  On this screen · {kept.length + picked.length} of {MAX_REFS}. Tap one to remove it{room <= 0 ? " and make room" : ""}.
+                </p>
+                <div className="mobbin-grid current">
+                  {current.map((r) => (
+                    <button
+                      key={r.id}
+                      className={`mobbin-shot ${kept.includes(r.id) ? "on" : "off"}`}
+                      onClick={() => toggleKept(r.id)}
+                      aria-pressed={kept.includes(r.id)}
+                    >
+                      <img src={r.data ? `data:image/jpeg;base64,${r.data}` : r.url} alt={r.title ?? "Reference"} referrerPolicy="no-referrer" />
+                      <span>{kept.includes(r.id) ? r.note || r.title || "Your image" : "Removed"}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {busy && (
               <p className="muted small mobbin-status">
                 <ThinkingOrb state="searching" size={20} theme="light" color="#016a71" /> Searching Mobbin…
@@ -180,8 +212,8 @@ export function MobbinPicker() {
               >
                 Disconnect
               </button>
-              <button className="btn ink" disabled={!picked.length} onClick={add}>
-                {room <= 0 ? "References are full" : `Add ${picked.length || ""} to references`.replace("  ", " ")}
+              <button className="btn ink" disabled={!changed} onClick={save}>
+                {picked.length && kept.length === current.length ? `Add ${picked.length} to references` : "Save references"}
               </button>
             </div>
           </>
@@ -197,13 +229,12 @@ export const openMobbin = (frameId: string) => set({ mobbinFor: frameId, mobbinN
 
 const SUGGEST = 3;
 
-/** What to search Mobbin for: the screen's name plus the start of the project brief. */
+/** What to search Mobbin for: the screen's name, or the start of the project brief while it has none. */
 export function suggestQuery(f: Frame, brief: string) {
+  // A named screen searches for itself: a "User profile" screen in a wallet app wants profile screens, not wallets.
   const name = f.name && !/^untitled/i.test(f.name) ? f.name.trim() : "";
-  const about = brief.trim().split(/\s+/).slice(0, 8).join(" ");
-  const seen = new Set<string>();
-  const words = `${name} ${about}`.split(/\s+/).filter((w) => w && !seen.has(w.toLowerCase()) && seen.add(w.toLowerCase()));
-  return words.join(" ").slice(0, 80);
+  if (name) return name.slice(0, 80);
+  return brief.trim().split(/\s+/).slice(0, 8).join(" ").slice(0, 80);
 }
 
 /**
@@ -226,7 +257,10 @@ export async function suggestRefs(frameId: string): Promise<string> {
         ...top.map((r) => ({ id: uid(), url: r.image, link: r.link, title: r.title, note: "", suggested: true })),
       ].slice(0, MAX_REFS),
     }));
-    return top.length ? "" : "Mobbin found nothing for this screen yet. Name the screen, then tap Find on Mobbin.";
+    if (top.length) return "";
+    return f.name && !/^untitled/i.test(f.name)
+      ? `Mobbin found nothing for “${f.name.trim()}”. Tap Find on Mobbin to try other words.`
+      : "Mobbin found nothing for this screen yet. Name the screen, then tap Find on Mobbin.";
   } catch (e) {
     updateFrame(frameId, () => ({ refsSuggested: false }));
     return `Couldn't suggest references: ${(e as Error).message}`;

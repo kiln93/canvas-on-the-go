@@ -28,11 +28,12 @@ type ModelId = keyof typeof PRICES;
 const pick = (m: string | undefined, fallback: ModelId): ModelId => (m && m in PRICES ? (m as ModelId) : fallback);
 // A new screen is designed from scratch by FIRST_BUILD_MODEL at high effort: that's where taste matters
 // most. Rebuilds, markups and variations edit an existing screen, so BUILD_MODEL does them at medium effort,
-// and it also runs the review when the checks find problems. Both can be overridden with env vars.
-// Suggestions, variation plans and briefs use the helper model.
+// Both can be overridden with env vars. The designer asked for Opus on everything that judges a screen:
+// the review pass and "Review markups" (suggestions) use REVIEW_MODEL. Variation plans and briefs use the helper.
 const FIRST_BUILD_MODEL = pick(process.env.FIRST_BUILD_MODEL, "claude-opus-5-5");
 const BUILD_MODEL = pick(process.env.BUILD_MODEL, "claude-sonnet-5-5");
 const HELPER_MODEL: ModelId = "claude-sonnet-5-5";
+const REVIEW_MODEL = pick(process.env.REVIEW_MODEL, "claude-opus-5-5");
 const FIRST_BUILD_EFFORT = "high" as const;
 const BUILD_EFFORT = "medium" as const;
 // Server-side fallback: if a request is declined by a safety classifier, the API retries it on
@@ -198,9 +199,14 @@ export async function suggest(req: SuggestRequest): Promise<SuggestResponse> {
     {
       type: "text",
       text: [
-        `Project brief: ${req.brief || "(none yet)"}`,
-        `Surface: ${req.surfaceName || "untitled"} on ${req.device}`,
+        `This screen: ${req.surfaceName || "untitled"} on ${req.device}`,
+        req.notes?.length
+          ? `The designer's notes on this screen. They say what it is; follow them and don't suggest what they already cover:\n${req.notes
+              .map((n, i) => `${i + 1}. ${n}`)
+              .join("\n")}`
+          : "The designer hasn't written notes on this screen yet.",
         `Stage: ${req.stage}`,
+        `Background, the brief for the whole app: ${req.brief || "(none yet)"}. This screen may be a different part of the app from the brief's main feature (a profile, settings, onboarding). Use the brief only for tone and product context; don't steer this screen toward the brief's main feature.`,
         req.code ? `Current screen code:\n${req.code}` : "",
       ]
         .filter(Boolean)
@@ -208,7 +214,7 @@ export async function suggest(req: SuggestRequest): Promise<SuggestResponse> {
     },
   ];
   const msg = await client().beta.messages.create({
-    model: HELPER_MODEL,
+    model: REVIEW_MODEL,
     max_tokens: 4000,
     system: SUGGEST_SYSTEM,
     output_config: { effort: "low", format: { type: "json_schema", schema: suggestSchema } },
@@ -270,9 +276,9 @@ async function generateOnce(
   content.push({
     type: "text",
     text: [
-      `Project brief: ${req.brief || "(none)"}`,
-      `Surface: ${req.surfaceName || "untitled"}`,
+      `This screen: ${req.surfaceName || "untitled"}`,
       `Frame: ${req.device}, ${req.width}x${req.height}px`,
+      `Background, the brief for the whole app: ${req.brief || "(none)"}. This screen may be a different part of the app from the brief's main feature; it is what the sketch and notes describe, and the brief only sets tone, content and product context.`,
       `Design system: ${req.designSystem}`,
       req.notes.length
         ? `Confirmed notes. Each one is a change the designer is asking for now${
@@ -348,9 +354,9 @@ export async function review(req: ReviewRequest, onProgress?: (p: Progress) => v
   content.push({
     type: "text",
     text: [
-      `Project brief: ${req.brief || "(none)"}`,
-      `Surface: ${req.surfaceName || "untitled"}`,
+      `This screen: ${req.surfaceName || "untitled"}`,
       `Frame: ${req.device}, ${req.width}x${req.height}px`,
+      `Background, the brief for the whole app: ${req.brief || "(none)"}. This screen may be a different part of the app from the brief's main feature; it is what the sketch and notes describe, and the brief only sets tone, content and product context.`,
       req.notes.length ? `Designer's notes:\n${req.notes.map((n) => `- ${n}`).join("\n")}` : "No notes.",
       req.instruction ? `Instruction the screen was built for: ${req.instruction}` : "",
       req.image ? "The image is the designer's sketch (or markups) the screen was built from." : "",
@@ -362,10 +368,10 @@ export async function review(req: ReviewRequest, onProgress?: (p: Progress) => v
       .join("\n\n"),
   });
   const stream = client().beta.messages.stream({
-    model: BUILD_MODEL,
+    model: REVIEW_MODEL,
     max_tokens: 20000,
     system: withSkills(REVIEW_SYSTEM),
-    output_config: { effort: "low", format: { type: "json_schema", schema: reviewSchema } },
+    output_config: { effort: "medium", format: { type: "json_schema", schema: reviewSchema } },
     messages: [{ role: "user", content }],
     ...FALLBACK,
   });
@@ -417,8 +423,8 @@ export async function planVariations(req: VariationsRequest): Promise<Variations
       {
         role: "user",
         content: [
-          `Project brief: ${req.brief || "(none)"}`,
           `Screen: ${req.surfaceName} on ${req.device}`,
+          `Background, the brief for the whole app (this screen may be a different part of it): ${req.brief || "(none)"}`,
           req.existing.length ? `Already exists: ${req.existing.join(", ")}` : "",
           `Screen code:\n${req.code}`,
         ]
