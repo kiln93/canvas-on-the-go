@@ -150,7 +150,7 @@ export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperti
               </button>
             )}
             <button className="btn ink" disabled={!!f.busy || !inputs.any} onClick={() => runGenerate(f.id)}>
-              {inputs.refs && !inputs.notes && !inputs.markups ? "Rebuild with references" : "Rebuild"} · {dollars(buildCost(f))}
+              {!inputs.screen ? "Rebuild marked parts" : inputs.refs && !inputs.notes && !inputs.markups ? "Rebuild with references" : "Rebuild whole screen"} · {dollars(buildCost(f))}
             </button>
           </>
         ) : (

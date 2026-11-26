@@ -644,7 +644,12 @@ function FocusBar({ frame: f, onDone, onPlay }: { frame: Frame; onDone: () => vo
           </button>
         )}
         {buildInputs(f).any && (
-          <button className="btn ink" disabled={!!f.busy} onClick={() => runGenerate(f.id)}>
+          <button
+            className="btn ink"
+            disabled={!!f.busy}
+            onClick={() => runGenerate(f.id)}
+            title={!f.code ? "Build this screen" : buildInputs(f).screen ? "Rebuild the whole screen" : "Rebuild only the parts your notes and markups point at"}
+          >
             {f.code ? "Rebuild" : "Generate"}
             <span className="focus-cost"> · {dollars(buildCost(f))}</span>
             <span className="focus-cost-short"> · {dollars(buildCost(f)).replace("about ", "~")}</span>

@@ -189,10 +189,13 @@ export function buildInputs(f: Frame) {
   const markups = f.strokes.some((s) => s.kind === "markup");
   const sketch = !f.code && f.strokes.some((s) => s.kind === "sketch");
   const refs = !!f.refs?.length && refsKey(f) !== (f.refsBuilt ?? "");
-  return { notes, markups, sketch, refs, any: notes > 0 || markups || sketch || refs };
+  // Notes pinned to a part change that part; a note on no part, or new references, rebuild the whole screen.
+  const wholeNotes = f.notes.filter((n) => n.status === "accepted" && !standing(n) && !n.region).length;
+  const screen = !!f.code && (refs || wholeNotes > 0);
+  return { notes, markups, sketch, refs, screen, any: notes > 0 || markups || sketch || refs };
 }
-/** New references redesign the screen on the first-build model, so they cost like a new screen. */
-export const buildCost = (f: Frame) => (!f.code || buildInputs(f).refs ? COST_ESTIMATE.screen : COST_ESTIMATE.variation);
+/** A whole-screen rebuild runs on the first-build model, so it costs like a new screen; a rebuild of pinned parts is a cheap edit. */
+export const buildCost = (f: Frame) => (!f.code || buildInputs(f).screen ? COST_ESTIMATE.screen : COST_ESTIMATE.variation);
 
 /**
  * Loads a Mobbin reference in the browser, where it already displays, as a small JPEG for this build only.
@@ -253,6 +256,7 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
       assumed: !f.code ? f.assumed : undefined,
       otherScreens: otherScreens(f),
       refsNew: refsChanged,
+      scope: f.code && buildInputs(f).screen ? "screen" : "parts",
     };
     // Building fills the first 60% of the bar; the review and its fixes the rest.
     const built = await postStream<GenerateResponse>("/api/generate", req, (l) => {

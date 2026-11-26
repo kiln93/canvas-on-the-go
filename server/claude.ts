@@ -255,7 +255,7 @@ const withSkills = (prompt: string): Anthropic.Beta.BetaTextBlockParam[] => [ski
 
 export async function generate(req: GenerateRequest, onProgress?: (p: Progress) => void): Promise<GenerateResponse> {
   // New references mean a redesign, not a tweak: write the screen out in full on the first-build model.
-  if (req.previousCode && !req.refsNew) {
+  if (req.previousCode && req.scope !== "screen") {
     const edited = await generateOnce(req, true, onProgress);
     if (edited) return edited;
     // The edits didn't line up with the code: fall back to writing the screen out in full.
@@ -313,7 +313,16 @@ async function generateOnce(
         : "",
       req.instruction ? `Instruction: ${req.instruction}` : "",
       req.previousCode
-        ? `${req.refsNew && !asEdits ? "The current screen, for its content and purpose only; redesign its look and layout after the references" : "previousCode"}:\n${req.previousCode}`
+        ? `${
+            asEdits
+              ? "previousCode"
+              : req.refsNew
+                ? "The current screen, for its content and purpose only; redesign its look and layout after the references"
+                : "The current screen; rebuild it as a whole to meet the notes, keeping its content and anything they don't change"
+          }:\n${req.previousCode}`
+        : "",
+      req.previousCode && asEdits && req.scope === "parts"
+        ? "Scope: each note is pinned to a part of the screen (its position is given as a share of the frame). Change only those parts, and what any markups point at; leave everything outside them exactly as it is."
         : "",
       asEdits ? EDIT_RULES : "",
       req.image
@@ -325,8 +334,8 @@ async function generateOnce(
       .filter(Boolean)
       .join("\n\n"),
   });
-  // A first build, or a redesign after new references, gets the stronger model.
-  const fresh = !req.previousCode || (!!req.refsNew && loaded.length > 0);
+  // A first build, or a whole-screen rebuild, gets the stronger model.
+  const fresh = !req.previousCode || req.scope === "screen";
   // Streaming keeps long generations under HTTP timeouts.
   const stream = client().beta.messages.stream({
     model: fresh ? FIRST_BUILD_MODEL : BUILD_MODEL,
