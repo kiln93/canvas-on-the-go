@@ -1,3 +1,5 @@
+import { MobbinPicker } from "./canvas/MobbinPicker";
+import { finishMobbinSignIn } from "./mobbin";
 import { shrinkImage } from "./images";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
@@ -42,6 +44,16 @@ export function App() {
     };
   }, []);
 
+  // Back from Mobbin's sign-in: reopen the screen it was started from, with its notes and the picker.
+  useEffect(() => {
+    finishMobbinSignIn().then((r) => {
+      if (!r?.frameId || !getState().project.frames.some((f) => f.id === r.frameId)) return;
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("cotg:focus", { detail: r.frameId }));
+        set({ notesOpen: true, mobbinFor: r.frameId!, mobbinNotice: r.error });
+      }, 400);
+    });
+  }, []);
   const focused = useStore((s) => !!s.focusId);
   const notesOpen = useStore((s) => s.notesOpen);
   return (
@@ -51,6 +63,7 @@ export function App() {
       <Canvas tool={tool} onPlay={setPlaying} />
       <Toolbar tool={tool} setTool={setTool} />
       {playing && <Preview id={playing} onClose={() => setPlaying(null)} />}
+      <MobbinPicker />
       {!tutorialDone && <Tutorial onDone={() => set({ tutorialDone: true })} />}
       {tutorialDone && (!brief || editingBrief) && (
         <BriefDialog

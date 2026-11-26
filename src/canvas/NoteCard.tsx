@@ -4,6 +4,7 @@ import { ThinkingOrb } from "thinking-orbs";
 import { COST_ESTIMATE, dollars, runGenerate, runSuggest } from "../api";
 import { NOTE_TAGS, uid, updateFrame, type Frame, type NoteItem, type NoteTag } from "../store";
 import { shrinkImage } from "../images";
+import { MAX_REFS, openMobbin, suggestRefs } from "./MobbinPicker";
 
 export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperties }) {
   const visible = f.notes.filter((n) => n.status === "pending" || n.status === "accepted");
@@ -308,12 +309,25 @@ function MicIcon() {
   );
 }
 
-const MAX_REFS = 4;
-
 /** Screenshots, photos or sketches the designer wants this screen to draw on, each with what to take from it. */
 function References({ frame: f }: { frame: Frame }) {
   const refs = f.refs ?? [];
   const [error, setError] = useState("");
+  const [suggesting, setSuggesting] = useState(false);
+  // A screen with no references gets the top Mobbin results for it, once; the designer edits from there.
+  useEffect(() => {
+    if (f.refsSuggested || refs.length) return;
+    let live = true;
+    setSuggesting(true);
+    suggestRefs(f.id).then((msg) => {
+      if (!live) return;
+      setSuggesting(false);
+      setError(msg);
+    });
+    return () => {
+      live = false;
+    };
+  }, [f.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const add = async (files: FileList | null) => {
     setError("");
     const picked = [...(files ?? [])].slice(0, MAX_REFS - refs.length);
@@ -335,13 +349,27 @@ function References({ frame: f }: { frame: Frame }) {
         <span>References</span>
         <span className="muted small">{refs.length ? `${refs.length} of ${MAX_REFS} · sent with every build` : "Optional"}</span>
       </div>
+      {refs.some((r) => r.suggested) && (
+        <p className="muted small refs-hint">Suggested from Mobbin for this screen. Remove any you don't want, or tap Find on Mobbin to swap them.</p>
+      )}
+      {suggesting && (
+        <p className="muted small mobbin-status">
+          <ThinkingOrb state="searching" size={20} theme="light" color="#016a71" /> Finding references on Mobbin…
+        </p>
+      )}
       {refs.map((r) => (
-        <div key={r.id} className="ref-row">
-          <img src={`data:image/jpeg;base64,${r.data}`} alt="Reference" />
+        <div key={r.id} className={`ref-row ${r.suggested ? "suggested" : ""}`}>
+          {r.link ? (
+            <a href={r.link} target="_blank" rel="noreferrer" title={r.title ?? "Open on Mobbin"}>
+              <img src={r.url} alt={r.title ?? "Mobbin reference"} referrerPolicy="no-referrer" />
+            </a>
+          ) : (
+            <img src={r.data ? `data:image/jpeg;base64,${r.data}` : r.url} alt={r.title ?? "Reference"} referrerPolicy="no-referrer" />
+          )}
           <input
             value={r.note}
             onChange={(e) => setRef(r.id, e.target.value)}
-            placeholder="What to take from it, e.g. this card layout"
+            placeholder={r.suggested && r.title ? `Suggested: ${r.title}` : "What to take from it, e.g. this card layout"}
             aria-label="What to take from this reference"
           />
           <button className="icon-btn" aria-label="Remove reference" onClick={() => remove(r.id)}>
@@ -350,10 +378,15 @@ function References({ frame: f }: { frame: Frame }) {
         </div>
       ))}
       {refs.length < MAX_REFS && (
-        <label className="ref-add">
-          + Add a screenshot or photo
-          <input type="file" accept="image/*" multiple hidden onChange={(e) => (add(e.target.files), (e.target.value = ""))} />
-        </label>
+        <div className="ref-adds">
+          <label className="ref-add">
+            + Screenshot or photo
+            <input type="file" accept="image/*" multiple hidden onChange={(e) => (add(e.target.files), (e.target.value = ""))} />
+          </label>
+          <button className="ref-add" onClick={() => openMobbin(f.id)}>
+            Find on Mobbin
+          </button>
+        </div>
       )}
       {error && <p className="small note-skipped">{error}</p>}
     </div>

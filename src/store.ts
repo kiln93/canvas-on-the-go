@@ -34,7 +34,17 @@ export type NoteItem = Suggestion & {
 };
 
 export type Version = { code: string; summary: string; at: number };
-export type ScreenRef = { id: string; data: string; note: string };
+/** A reference: an uploaded image (data), or a Mobbin screen kept as a link only (url + link), per Mobbin's terms. */
+export type ScreenRef = {
+  id: string;
+  data?: string;
+  url?: string;
+  link?: string;
+  title?: string;
+  note: string;
+  /** Picked automatically from Mobbin; the designer can remove or replace it. */
+  suggested?: boolean;
+};
 
 export type Frame = {
   id: string;
@@ -61,6 +71,8 @@ export type Frame = {
   variationsPlanned?: boolean;
   /** Reference images for this screen (base64 JPEG), each with what to take from it. Sent with every build. */
   refs?: ScreenRef[];
+  /** References were already suggested once for this screen, so removing them sticks. */
+  refsSuggested?: boolean;
   /** Variations Claude suggested for this screen, waiting for the designer to pick which to build. */
   variationPlan?: { name: string; instruction: string }[];
 };
@@ -83,6 +95,9 @@ type State = {
   focusId: string | null;
   /** The drawing view's notes panel (docked on the right on wide screens, a sheet on phones). */
   notesOpen: boolean;
+  /** The frame the "Find on Mobbin" picker is open for, and a message to show in it (after sign-in). */
+  mobbinFor: string | null;
+  mobbinNotice?: string;
 };
 
 const KEY = "cotg.v1";
@@ -96,6 +111,7 @@ function load(): State {
     tutorialDone: false,
     focusId: null,
     notesOpen: false,
+    mobbinFor: null,
   };
   try {
     const raw = localStorage.getItem(KEY);
@@ -107,7 +123,7 @@ function load(): State {
       f.error = undefined;
     });
     if (saved.project.spend.month !== month()) saved.project.spend = { month: month(), cost: 0 };
-    return { ...empty, ...saved, selectedId: null, focusId: null, notesOpen: false };
+    return { ...empty, ...saved, selectedId: null, focusId: null, notesOpen: false, mobbinFor: null, mobbinNotice: undefined };
   } catch {
     return empty;
   }
