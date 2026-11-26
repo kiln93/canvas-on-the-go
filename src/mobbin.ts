@@ -1,6 +1,6 @@
 // Mobbin on the device: the sign-in tokens live only in this browser (never in the project or the repo),
 // and the server just relays each call to Mobbin. See server/mobbin.ts.
-import type { MobbinAuth, MobbinScreen, MobbinTokens } from "../server/mobbin";
+import type { MobbinAuth, MobbinKind, MobbinScreen, MobbinTokens } from "../server/mobbin";
 
 const KEY = "cotg.mobbin";
 const PENDING = "cotg.mobbin.pending";
@@ -83,11 +83,11 @@ async function refresh(saved: Saved): Promise<Saved | null> {
 }
 
 /** Searches Mobbin's screens or flows. Refreshes the sign-in once if it has expired. */
-export async function searchMobbin(query: string, kind: "screens" | "flows") {
+export async function searchMobbin(query: string, kind: MobbinKind, platform: "ios" | "web" = "ios") {
   let saved = read<Saved>(KEY);
   if (!saved) throw new Error("Connect Mobbin first.");
   if (saved.tokens.expiresAt && saved.tokens.expiresAt < Date.now() + 30_000) saved = (await refresh(saved)) ?? saved;
-  const go = (s: Saved) => call<{ screens: MobbinScreen[]; said?: string }>({ action: "search", accessToken: s.tokens.accessToken, query, kind });
+  const go = (s: Saved) => call<{ screens: MobbinScreen[]; said?: string }>({ action: "search", accessToken: s.tokens.accessToken, query, kind, platform });
   try {
     return await go(saved);
   } catch (e) {

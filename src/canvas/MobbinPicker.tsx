@@ -4,9 +4,14 @@ import { ThinkingOrb } from "thinking-orbs";
 import { connectMobbin, disconnectMobbin, mobbinConnected, searchMobbin } from "../mobbin";
 import type { Frame } from "../store";
 import { getState, set, uid, updateFrame, useStore } from "../store";
-import type { MobbinScreen } from "../../server/mobbin";
+import type { MobbinKind, MobbinScreen } from "../../server/mobbin";
 
 export const MAX_REFS = 4;
+
+const KIND_LABEL: Record<MobbinKind, string> = { screens: "Screens", flows: "Flows", sections: "Website sections" };
+
+/** Desktop screens search Mobbin's web apps; phone and tablet screens search iOS apps. */
+const platformFor = (f: Frame) => (f.device === "desktop" ? "web" : "ios");
 
 /** Search Mobbin's real app screens and pick some as this screen's references (kept as links only). */
 export function MobbinPicker() {
@@ -15,10 +20,11 @@ export function MobbinPicker() {
   const f = useStore((s) => s.project.frames.find((x) => x.id === s.mobbinFor));
   const [connected, setConnected] = useState(mobbinConnected());
   const [query, setQuery] = useState("");
-  const [kind, setKind] = useState<"screens" | "flows">("screens");
+  const [kind, setKind] = useState<MobbinKind>("screens");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState<MobbinScreen[] | null>(null);
+  const [resultKind, setResultKind] = useState<MobbinKind>("screens");
   const [said, setSaid] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
 
@@ -27,6 +33,7 @@ export function MobbinPicker() {
     if (!f) return;
     setConnected(mobbinConnected());
     setQuery(f.name && !/^untitled/i.test(f.name) ? f.name : "");
+    setKind("screens");
     setResults(null);
     setPicked([]);
     setError(notice ?? "");
@@ -43,8 +50,9 @@ export function MobbinPicker() {
     setError("");
     setSaid("");
     try {
-      const out = await searchMobbin(query.trim(), kind);
+      const out = await searchMobbin(query.trim(), kind, platformFor(f));
       setResults(out.screens);
+      setResultKind(kind);
       setSaid(out.said ?? "");
       setPicked([]);
     } catch (e) {
@@ -90,7 +98,7 @@ export function MobbinPicker() {
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="e.g. wallet offline banner"
+                  placeholder={kind === "sections" ? "e.g. pricing table, hero with app screenshot" : "e.g. wallet offline banner"}
                   aria-label="Search Mobbin"
                   enterKeyHint="search"
                 />
@@ -99,9 +107,9 @@ export function MobbinPicker() {
                 </button>
               </form>
               <div className="chips">
-                {(["screens", "flows"] as const).map((k) => (
+                {(["screens", "flows", "sections"] as const).map((k) => (
                   <button key={k} className={`chip ${kind === k ? "on" : ""}`} onClick={() => setKind(k)}>
-                    {k === "screens" ? "Screens" : "Flows"}
+                    {KIND_LABEL[k]}
                   </button>
                 ))}
               </div>
@@ -147,7 +155,7 @@ export function MobbinPicker() {
               </p>
             )}
             {results && results.length > 0 && (
-              <div className="mobbin-grid">
+              <div className={`mobbin-grid ${resultKind === "sections" ? "wide" : ""}`}>
                 {results.map((r) => (
                   <button
                     key={r.image}
@@ -210,7 +218,7 @@ export async function suggestRefs(frameId: string): Promise<string> {
   if (!query) return "";
   updateFrame(frameId, () => ({ refsSuggested: true }));
   try {
-    const { screens } = await searchMobbin(query, "screens");
+    const { screens } = await searchMobbin(query, "screens", platformFor(f));
     const top = screens.slice(0, SUGGEST);
     updateFrame(frameId, (cur) => ({
       refs: [

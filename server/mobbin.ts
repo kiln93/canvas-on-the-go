@@ -15,7 +15,7 @@ export type MobbinRequest =
   | { action: "begin"; redirectUri: string }
   | ({ action: "token"; code: string; verifier: string; redirectUri: string } & MobbinAuth)
   | ({ action: "refresh"; refreshToken: string } & MobbinAuth)
-  | { action: "search"; accessToken: string; query: string; kind?: "screens" | "flows" };
+  | { action: "search"; accessToken: string; query: string; kind?: MobbinKind; platform?: "ios" | "web" };
 
 export class MobbinError extends Error {
   constructor(public status: number, message: string) {
@@ -231,7 +231,10 @@ function screensFrom(result: Record<string, unknown>): MobbinScreen[] {
   return out;
 }
 
-async function search(token: string, query: string, kind: "screens" | "flows" = "screens") {
+/** screens and flows are app UI; sections are parts of websites (heroes, pricing, footers) from Mobbin Sites. */
+export type MobbinKind = "screens" | "flows" | "sections";
+
+async function search(token: string, query: string, kind: MobbinKind = "screens", platform: "ios" | "web" = "ios") {
   const call = await mcp(token);
   const tools = ((await call("tools/list", {})).tools as { name: string; inputSchema?: { properties?: Record<string, unknown> } }[]) ?? [];
   const tool = tools.find((t) => t.name === `search_${kind}`) ?? tools.find((t) => /search/.test(t.name));
@@ -239,7 +242,7 @@ async function search(token: string, query: string, kind: "screens" | "flows" = 
   const props = Object.keys(tool.inputSchema?.properties ?? {});
   const qKey = props.find((p) => /^(query|q|search|text|prompt)$/i.test(p)) ?? "query";
   const args: Record<string, unknown> = { [qKey]: query };
-  if (props.includes("platform")) args.platform = "ios";
+  if (props.includes("platform")) args.platform = kind === "sections" ? "web" : platform;
   const result = await call("tools/call", { name: tool.name, arguments: args });
   const screens = screensFrom(result);
   // When nothing parsed, send back a little of what Mobbin said, so the problem can be seen and fixed.
@@ -271,7 +274,12 @@ export async function mobbin(req: MobbinRequest) {
       });
     case "search":
       if (!req.query?.trim()) throw new MobbinError(400, "Type what you're looking for.");
-      return search(req.accessToken, req.query.trim().slice(0, 200), req.kind);
+      return search(
+        req.accessToken,
+        req.query.trim().slice(0, 200),
+        (["screens", "flows", "sections"] as const).find((k) => k === req.kind),
+        req.platform === "web" ? "web" : "ios",
+      );
     default:
       throw new MobbinError(400, "Unknown Mobbin action.");
   }
