@@ -1,3 +1,4 @@
+import { shrinkImage } from "./images";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
 import { importPrd } from "./api";
@@ -11,6 +12,7 @@ export function App() {
   const [playing, setPlaying] = useState<string | null>(null);
   const tutorialDone = useStore((s) => s.tutorialDone);
   const brief = useStore((s) => s.project.brief);
+  const styleRef = useStore((s) => s.project.styleRef);
   const [editingBrief, setEditingBrief] = useState(false);
 
   useEffect(() => {
@@ -53,8 +55,9 @@ export function App() {
       {tutorialDone && (!brief || editingBrief) && (
         <BriefDialog
           initial={brief}
-          onSave={(b) => {
-            setBrief(b);
+          initialRef={styleRef}
+          onSave={(b, ref) => {
+            setBrief(b, ref);
             setEditingBrief(false);
           }}
           onCancel={brief ? () => setEditingBrief(false) : undefined}
@@ -279,8 +282,14 @@ function Preview({ id, onClose }: { id: string; onClose: () => void }) {
 
 const GDOC = /docs\.google\.com\/document\//;
 
-function BriefDialog(props: { initial: string; onSave: (b: string) => void; onCancel?: () => void }) {
+function BriefDialog(props: {
+  initial: string;
+  initialRef?: string;
+  onSave: (b: string, ref?: string) => void;
+  onCancel?: () => void;
+}) {
   const [text, setText] = useState(props.initial);
+  const [styleRef, setStyleRef] = useState(props.initialRef);
   const [source, setSource] = useState("");
   const [status, setStatus] = useState<{ busy?: boolean; msg?: string; error?: boolean }>({});
 
@@ -314,7 +323,7 @@ function BriefDialog(props: { initial: string; onSave: (b: string) => void; onCa
         className="modal"
         onSubmit={(e) => {
           e.preventDefault();
-          if (text.trim()) props.onSave(text.trim());
+          if (text.trim()) props.onSave(text.trim(), styleRef);
         }}
       >
         <h2>What are you building?</h2>
@@ -360,6 +369,37 @@ function BriefDialog(props: { initial: string; onSave: (b: string) => void; onCa
           placeholder="Example: A habit tracker for runners, mobile first, with streaks and a weekly summary."
           aria-label="Project brief"
         />
+        <div className="style-ref">
+          {styleRef ? (
+            <img src={`data:image/jpeg;base64,${styleRef}`} alt="Style reference" />
+          ) : (
+            <span className="style-ref-empty" aria-hidden="true" />
+          )}
+          <div className="style-ref-text">
+            <strong>Style reference</strong>
+            <span className="muted small">Optional. A screenshot of an app whose look you like. New screens match its style, not its content.</span>
+          </div>
+          <span className="style-ref-actions">
+          <label className="btn">
+            {styleRef ? "Change" : "Add image"}
+            <input
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) setStyleRef(await shrinkImage(f));
+              }}
+            />
+          </label>
+          {styleRef && (
+            <button type="button" className="btn ghost" onClick={() => setStyleRef(undefined)}>
+              Remove
+            </button>
+          )}
+          </span>
+        </div>
         <div className="modal-actions">
           {props.onCancel && (
             <button type="button" className="btn ghost" onClick={props.onCancel}>

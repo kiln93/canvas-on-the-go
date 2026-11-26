@@ -3,6 +3,7 @@ import { keyboardOnPencilTap, primeKeyboard } from "./keyboard";
 import { ThinkingOrb } from "thinking-orbs";
 import { COST_ESTIMATE, dollars, runGenerate, runSuggest } from "../api";
 import { NOTE_TAGS, uid, updateFrame, type Frame, type NoteItem, type NoteTag } from "../store";
+import { shrinkImage } from "../images";
 
 export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperties }) {
   const visible = f.notes.filter((n) => n.status === "pending" || n.status === "accepted");
@@ -86,6 +87,7 @@ export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperti
           }))
         }
       />
+      <References frame={f} />
       {history.length > 0 && (
         <div className="note-history">
           <button className="history-toggle" onClick={() => setHistoryOpen((o) => !o)} aria-expanded={historyOpen}>
@@ -303,5 +305,57 @@ function MicIcon() {
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
       <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
     </svg>
+  );
+}
+
+const MAX_REFS = 4;
+
+/** Screenshots, photos or sketches the designer wants this screen to draw on, each with what to take from it. */
+function References({ frame: f }: { frame: Frame }) {
+  const refs = f.refs ?? [];
+  const [error, setError] = useState("");
+  const add = async (files: FileList | null) => {
+    setError("");
+    const picked = [...(files ?? [])].slice(0, MAX_REFS - refs.length);
+    try {
+      const data = await Promise.all(picked.map((file) => shrinkImage(file)));
+      updateFrame(f.id, (cur) => ({
+        refs: [...(cur.refs ?? []), ...data.map((d) => ({ id: uid(), data: d, note: "" }))].slice(0, MAX_REFS),
+      }));
+    } catch {
+      setError("That file couldn't be read as an image.");
+    }
+  };
+  const setRef = (id: string, note: string) =>
+    updateFrame(f.id, (cur) => ({ refs: (cur.refs ?? []).map((r) => (r.id === id ? { ...r, note } : r)) }));
+  const remove = (id: string) => updateFrame(f.id, (cur) => ({ refs: (cur.refs ?? []).filter((r) => r.id !== id) }));
+  return (
+    <div className="refs">
+      <div className="refs-head">
+        <span>References</span>
+        <span className="muted small">{refs.length ? `${refs.length} of ${MAX_REFS} · sent with every build` : "Optional"}</span>
+      </div>
+      {refs.map((r) => (
+        <div key={r.id} className="ref-row">
+          <img src={`data:image/jpeg;base64,${r.data}`} alt="Reference" />
+          <input
+            value={r.note}
+            onChange={(e) => setRef(r.id, e.target.value)}
+            placeholder="What to take from it, e.g. this card layout"
+            aria-label="What to take from this reference"
+          />
+          <button className="icon-btn" aria-label="Remove reference" onClick={() => remove(r.id)}>
+            ✕
+          </button>
+        </div>
+      ))}
+      {refs.length < MAX_REFS && (
+        <label className="ref-add">
+          + Add a screenshot or photo
+          <input type="file" accept="image/*" multiple hidden onChange={(e) => (add(e.target.files), (e.target.value = ""))} />
+        </label>
+      )}
+      {error && <p className="small note-skipped">{error}</p>}
+    </div>
   );
 }

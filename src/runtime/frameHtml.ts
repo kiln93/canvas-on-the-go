@@ -50,9 +50,30 @@ const ICONS = {
   wallet: "M21 12V7H5a2 2 0 0 1 0-4h14v4M3 5v14a2 2 0 0 0 2 2h16v-5M18 12a2 2 0 0 0 0 4h4v-4z",
   chart: "M3 3v18h18M7 16V9M12 16V5M17 16v-4",
 };
-function Icon({ name, className }) {
-  const d = ICONS[name] || ICONS.more;
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn("h-5 w-5 shrink-0", className)} aria-hidden="true"><path d={d} /></svg>;
+// Older short names the model may still use, mapped to their Lucide names.
+const ICON_ALIASES = { more: "ellipsis", cart: "shopping-cart", edit: "pencil", message: "message-circle", grid: "layout-grid", chart: "chart-column", trash: "trash-2" };
+const pascal = (s) => String(s || "").replace(/(^|[-_\s]+)([a-z0-9])/gi, (_, __, c) => c.toUpperCase());
+function Icon({ name, className, strokeWidth = 2 }) {
+  const lucide = window.lucide && window.lucide.icons;
+  const node = lucide && (lucide[pascal(ICON_ALIASES[name] || name)] || lucide[pascal(name)]);
+  const svg = (children) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={cn("h-5 w-5 shrink-0", className)} aria-hidden="true">{children}</svg>;
+  if (node) return svg(node.map(([tag, attrs], i) => React.createElement(tag, { ...attrs, key: i })));
+  return svg(<path d={ICONS[name] || ICONS.more} />);
+}
+
+// A real photo for the query (Creative Commons photos by keyword). If it can't load, a tinted block
+// with an image icon takes its place, so a screen never shows a broken image.
+function Photo({ query = "", ratio = "4/3", className, style, alt }) {
+  const [failed, setFailed] = useState(false);
+  const words = String(query).toLowerCase().replace(/[^a-z0-9 ,]/g, " ").split(/[ ,]+/).filter(Boolean).slice(0, 3);
+  let h = 7; for (const c of String(query)) h = (h * 31 + c.charCodeAt(0)) | 0;
+  const [rw, rh] = String(ratio).split("/").map(Number);
+  const w = 800, ht = Math.round(w * ((rh || 3) / (rw || 4)));
+  const src = "https://loremflickr.com/" + w + "/" + ht + "/" + (words.join(",") || "texture") + "?lock=" + (Math.abs(h) % 997);
+  const box = { aspectRatio: String(ratio).replace("/", " / "), ...style };
+  if (failed || !words.length)
+    return <div className={cn("flex items-center justify-center overflow-hidden bg-muted text-muted-foreground", className)} style={{ ...box, backgroundColor: "hsl(" + (Math.abs(h) % 360) + " 30% 88%)" }}><Icon name="image" className="h-6 w-6 opacity-60" /></div>;
+  return <img src={src} alt={alt || query} loading="lazy" onError={() => setFailed(true)} className={cn("block w-full object-cover", className)} style={box} />;
 }
 
 const btnVariants = {
@@ -268,6 +289,7 @@ export function frameHtml(code: string, opts: { dark?: boolean } = {}): string {
 <script src="${rt}/react.js"></script>
 <script src="${rt}/react-dom.js"></script>
 <script src="${rt}/babel.js"></script>
+<script src="${rt}/lucide.js"></script>
 ${motion ? `<script src="${rt}/motion.js"></script>` : ""}
 ${gsap ? GSAP_FILES.map((f) => `<script src="${rt}/${f}"></script>`).join("") : ""}
 </head><body><div id="root"></div>

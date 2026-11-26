@@ -1,0 +1,8 @@
+
+  VITE v6.4.6  ready in 202 ms
+
+  ➜  Local:   http://localhost:5199/
+  ➜  Network: use --host to expose
+4:43:44 PM [vite] (client) hmr update /src/styles.css
+4:44:38 PM [vite] (client) hmr update /src/canvas/Canvas.tsx
+4:44:38 PM [vite] (client) hmr update /src/styles.css

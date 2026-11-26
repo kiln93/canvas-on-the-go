@@ -34,6 +34,7 @@ export type NoteItem = Suggestion & {
 };
 
 export type Version = { code: string; summary: string; at: number };
+export type ScreenRef = { id: string; data: string; note: string };
 
 export type Frame = {
   id: string;
@@ -58,12 +59,16 @@ export type Frame = {
   review?: { verdict: "ship" | "fix" | "skipped"; findings: string[]; at: number };
   /** Set on a surface's primary frame once its variations have been planned. */
   variationsPlanned?: boolean;
+  /** Reference images for this screen (base64 JPEG), each with what to take from it. Sent with every build. */
+  refs?: ScreenRef[];
   /** Variations Claude suggested for this screen, waiting for the designer to pick which to build. */
   variationPlan?: { name: string; instruction: string }[];
 };
 
 export type Project = {
   brief: string;
+  /** An optional screenshot whose look new screens should match (base64 JPEG, no data: prefix). */
+  styleRef?: string;
   frames: Frame[];
   spend: { month: string; cost: number };
   cap: number;
@@ -171,8 +176,8 @@ export function redo() {
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
 
-export function setBrief(brief: string) {
-  state = { ...state, project: { ...state.project, brief } };
+export function setBrief(brief: string, styleRef?: string) {
+  state = { ...state, project: { ...state.project, brief, styleRef } };
   emit();
 }
 
