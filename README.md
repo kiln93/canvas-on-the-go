@@ -5,19 +5,24 @@ A lightweight design canvas for iPad (and any browser). Sketch a screen with App
 ## How it works
 
 1. **Project brief.** Describe what you're building once. Every AI call uses it as context.
-2. **Overview canvas.** Each frame you draw here is a *surface*. Drag a rough rectangle with the frame tool and it snaps to iPhone, iPad or desktop.
+2. **Pick a device and draw.** Choose iPhone, iPad or desktop, then tap or drag with the frame tool. The new frame zooms in to fill the screen so there's room to draw. Draw freely: strokes can run past the frame's edge, and a stroke on empty canvas starts a new frame. **✎ Draw** on any frame zooms back in.
 3. **Sketch, then tap ✓ Done sketching.** Claude reads the sketch and fills the note card beside the frame with suggestions ("Is this a header?"), numbered to match callouts on the sketch.
-4. **Confirm.** Accept, edit or dismiss each one, or write or dictate your own notes.
-5. **Generate.** The frame becomes a live React screen. The sketch stays as a faint layer until you tap **Approve**.
-6. **Mark it up.** Draw over a live screen (strokes turn red), then **Apply markups** to rebuild it. **Undo version** steps back.
-7. **Open surface.** Double-tap a surface, or tap **Open surface**, to see all its variations. **+ Variation** makes empty, loading, error, dark or any scenario you describe.
+4. **Leave notes where they belong.** Press and hold the pen on any part of a sketch or a live screen to leave a note on just that part (on a live screen it picks the exact component). Tag each note **UI**, **Interaction**, **Motion**, **Copy** or **Data**, and type or dictate it. Accept, edit or dismiss Claude's suggestions too.
+5. **Generate.** The frame becomes a live React screen built on iOS patterns (large titles, tab bars, grouped lists, sheets) with realistic content. The sketch hides; **Show sketch** brings it back. Notes that went into the build move to **History**, where **Reuse** puts one back.
+6. **Mark it up.** Draw over a live screen (strokes turn red), or press and hold to note a component, then **Rebuild**. **Undo version** steps back.
+7. **Open surface.** The first time you open a surface with a built screen, Claude plans the states worth designing for it (empty, offline, a product-specific edge case…) and builds each as a variation. **Suggest more states** asks for more; **+ Variation** makes one you describe.
 8. **▶ Play** opens the screen full size so you can click through it.
+
+While Claude works, the frame shows what it's doing and how far along it is, with an orb, a beam around the frame, a pixel mosaic while the screen is written, and a wave that reveals the finished screen.
+
+Generated screens can use Motion for React, GSAP (with Flip, Draggable, ScrollTrigger, CustomEase) and Three.js. They load only in screens that use them.
 
 ### Gestures
 
 | Input | Action |
 | --- | --- |
 | Pencil | Uses the current tool (select, pen, eraser, frame) |
+| Pencil, press and hold on a frame | Leave a note on that part |
 | One finger | Pan |
 | Two-finger pinch | Zoom |
 | Two-finger tap | Undo |
@@ -48,16 +53,18 @@ The key stays on the server (`api/*.ts`). The browser never sees it.
 | --- | --- |
 | `src/canvas/Canvas.tsx` | Infinite canvas: Pencil and touch input, pan and zoom, frames |
 | `src/canvas/FrameView.tsx` | One frame: ink, callouts, the live screen, actions |
-| `src/canvas/NoteCard.tsx` | The note card tethered to each frame, with dictation |
-| `src/runtime/frameHtml.ts` | The document a generated screen runs in, with the shadcn-style kit |
+| `src/canvas/NoteCard.tsx` | The note card tethered to each frame: tags, dictation, history |
+| `src/canvas/NoteComposer.tsx`, `src/canvas/pick.ts` | Press-and-hold notes, and asking a live screen which component was pressed |
+| `src/canvas/FrameLoader.tsx` | Progress while Claude works: orb, beam, mosaic, reveal wave |
+| `src/runtime/frameHtml.ts` | The document a generated screen runs in: the shadcn-style kit plus iOS parts (Screen, NavBar, TabBar, ListGroup…) |
 | `src/store.ts` | Project state, undo and redo, saved to the browser |
-| `server/claude.ts`, `server/prompts.ts` | The two Claude calls: read a sketch, build a screen |
+| `server/claude.ts`, `server/prompts.ts` | The Claude calls: read a sketch, build a screen (streamed with progress), plan variations, import a PRD |
 | `api/*.ts` | Vercel functions. `npm run dev` serves the same handlers |
 
 ## Costs
 
-Both calls use Claude Opus 5.5 ($4 per million input tokens, $20 per million output). The meter in the top bar estimates this month's spend from real token counts and stops new AI calls at your cap ($50 by default, editable).
+All calls use Claude Opus 5.5 ($4 per million input tokens, $20 per million output). The meter in the top bar estimates this month's spend from real token counts and stops new AI calls at your cap ($50 by default, editable).
 
 ## Not in this slice yet
 
-Prototype links between frames, motion and interaction editing, Figma import and export, MCP assets (Nano Banana, Higgsfield, Blender), sync across devices, and share links. Projects are saved in the browser for now.
+Prototype links between frames, a motion editor, Figma import and export, MCP assets (Nano Banana, Higgsfield, Blender), sync across devices, and share links. Projects are saved in the browser for now.

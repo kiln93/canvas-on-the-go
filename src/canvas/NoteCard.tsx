@@ -1,9 +1,12 @@
 import { useRef, useState, type CSSProperties } from "react";
+import { ThinkingOrb } from "thinking-orbs";
 import { runGenerate, runSuggest } from "../api";
-import { uid, updateFrame, type Frame, type NoteItem } from "../store";
+import { NOTE_TAGS, uid, updateFrame, type Frame, type NoteItem, type NoteTag } from "../store";
 
 export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperties }) {
-  const visible = f.notes.filter((n) => n.status !== "dismissed");
+  const visible = f.notes.filter((n) => n.status === "pending" || n.status === "accepted");
+  const history = f.notes.filter((n) => n.status === "applied").sort((a, b) => (b.appliedAt ?? 0) - (a.appliedAt ?? 0));
+  const [historyOpen, setHistoryOpen] = useState(false);
   const pending = visible.filter((n) => n.status === "pending").length;
   const accepted = visible.filter((n) => n.status === "accepted").length;
   const setNote = (id: string, patch: Partial<NoteItem>) =>
@@ -29,16 +32,28 @@ export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperti
         )}
       </div>
       {visible.length === 0 && (
-        <p className="muted small">
-          {f.busy ? "Reading your sketch…" : "Tap “Done sketching” and I'll suggest what each part is. You can also write or say notes below."}
+        <p className="muted small note-empty">
+          {f.busy === "suggesting" ? (
+            <>
+              <ThinkingOrb state="searching" size={20} theme="light" color="#016a71" />
+              Reading your sketch…
+            </>
+          ) : f.code ? (
+            "Press and hold the pen on any part of the screen to leave a note there, or write one below."
+          ) : (
+            "Tap “Done sketching” and I'll suggest what each part is. You can also press and hold the pen on any part, or write or say a note below."
+          )}
         </p>
       )}
       <ol className="notes">
         {visible.map((n) => {
-          const num = !f.code && n.region ? ++callout : null;
+          const num = n.region ? ++callout : null;
           return (
             <li key={n.id} className={`note ${n.status}`}>
               <span className="num">{num ?? "•"}</span>
+              {(n.tag || n.kind === "copy") && (
+                <span className={`tag tag-${n.tag ?? "copy"}`}>{NOTE_TAGS.find((t) => t.id === (n.tag ?? "copy"))?.label}</span>
+              )}
               <NoteText text={n.text} onChange={(text) => setNote(n.id, { text, status: "accepted" })} />
               {n.status === "pending" ? (
                 <span className="note-btns">
@@ -61,12 +76,36 @@ export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperti
         })}
       </ol>
       <AddNote
-        onAdd={(text) =>
+        onAdd={(text, tag) =>
           updateFrame(f.id, (cur) => ({
-            notes: [...cur.notes, { id: uid(), kind: "component", text, status: "accepted", mine: true, region: null }],
+            notes: [...cur.notes, { id: uid(), kind: "component", text, tag, status: "accepted", mine: true, region: null }],
           }))
         }
       />
+      {history.length > 0 && (
+        <div className="note-history">
+          <button className="history-toggle" onClick={() => setHistoryOpen((o) => !o)} aria-expanded={historyOpen}>
+            <span className={`chev ${historyOpen ? "open" : ""}`}>›</span>
+            History · {history.length} note{history.length > 1 ? "s" : ""} built in
+          </button>
+          {historyOpen && (
+            <ul className="history-list">
+              {history.map((n) => (
+                <li key={n.id}>
+                  <span className="note-text">{n.text}</span>
+                  <button
+                    className="link"
+                    title="Use this note again in the next build"
+                    onClick={() => setNote(n.id, { status: "accepted", appliedAt: undefined })}
+                  >
+                    Reuse
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       <div className="note-foot">
         {f.code ? (
           <>
@@ -155,8 +194,17 @@ const SpeechRecognitionCtor: (new () => Recognition) | undefined =
     .SpeechRecognition ??
   (window as unknown as { webkitSpeechRecognition?: new () => Recognition }).webkitSpeechRecognition;
 
-function AddNote({ onAdd }: { onAdd: (text: string) => void }) {
+export function AddNote({
+  onAdd,
+  autoFocus,
+  placeholder = "Write or say a note…",
+}: {
+  onAdd: (text: string, tag: NoteTag) => void;
+  autoFocus?: boolean;
+  placeholder?: string;
+}) {
   const [text, setText] = useState("");
+  const [tag, setTag] = useState<NoteTag>("ui");
   const [listening, setListening] = useState(false);
   const [error, setError] = useState("");
   const rec = useRef<Recognition | null>(null);
@@ -194,19 +242,34 @@ function AddNote({ onAdd }: { onAdd: (text: string) => void }) {
 
   return (
     <>
+      <div className="tag-picker" role="radiogroup" aria-label="What is this note about?">
+        {NOTE_TAGS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="radio"
+            aria-checked={tag === t.id}
+            className={`tag tag-${t.id} ${tag === t.id ? "on" : ""}`}
+            onClick={() => setTag(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
       <form
         className="add-note"
         onSubmit={(e) => {
           e.preventDefault();
           rec.current?.stop();
-          if (text.trim()) onAdd(text.trim());
+          if (text.trim()) onAdd(text.trim(), tag);
           setText("");
         }}
       >
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={listening ? "Listening…" : "Write or say a note…"}
+          placeholder={listening ? "Listening…" : placeholder}
+          autoFocus={autoFocus}
           enterKeyHint="done"
         />
         {SpeechRecognitionCtor && (

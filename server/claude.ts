@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { BRIEF_SYSTEM, GENERATE_SYSTEM, SUGGEST_SYSTEM } from "./prompts.js";
+import { BRIEF_SYSTEM, GENERATE_SYSTEM, SUGGEST_SYSTEM, VARIATIONS_SYSTEM } from "./prompts.js";
 import type {
   ApiError,
   GenerateRequest,
@@ -9,6 +9,8 @@ import type {
   SuggestRequest,
   SuggestResponse,
   Usage,
+  VariationsRequest,
+  VariationsResponse,
 } from "./types.js";
 
 const MODEL = "claude-opus-5-5";
@@ -95,11 +97,13 @@ const suggestSchema = {
   },
 };
 
+// plan comes first so the model decides the archetype, navigation and signature before writing code.
 const generateSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["title", "summary", "code"],
+  required: ["plan", "title", "summary", "code"],
   properties: {
+    plan: { type: "string" },
     title: { type: "string" },
     summary: { type: "string" },
     code: { type: "string" },
@@ -142,7 +146,9 @@ export async function suggest(req: SuggestRequest): Promise<SuggestResponse> {
   };
 }
 
-export async function generate(req: GenerateRequest): Promise<GenerateResponse> {
+export type Progress = { phase: "thinking" | "writing"; chars: number };
+
+export async function generate(req: GenerateRequest, onProgress?: (p: Progress) => void): Promise<GenerateResponse> {
   const content: Anthropic.Beta.BetaContentBlockParam[] = [];
   if (req.image) content.push(image(req.image));
   content.push({
@@ -173,9 +179,60 @@ export async function generate(req: GenerateRequest): Promise<GenerateResponse> 
     messages: [{ role: "user", content }],
     ...FALLBACK,
   });
+  // Report how much of the answer has been written, so the app can show real progress.
+  let chars = 0;
+  stream.on("text", (delta) => {
+    chars += delta.length;
+    onProgress?.({ phase: "writing", chars });
+  });
+  onProgress?.({ phase: "thinking", chars: 0 });
   const msg = await stream.finalMessage();
-  const out = jsonText(msg) as Omit<GenerateResponse, "usage">;
+  const { plan: _plan, ...out } = jsonText(msg) as Omit<GenerateResponse, "usage"> & { plan: string };
   return { ...out, usage: usageOf(msg) };
+}
+
+const variationsSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["variations"],
+  properties: {
+    variations: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "instruction"],
+        properties: { name: { type: "string" }, instruction: { type: "string" } },
+      },
+    },
+  },
+};
+
+/** Plans which states and scenarios of a screen are worth designing. */
+export async function planVariations(req: VariationsRequest): Promise<VariationsResponse> {
+  if (!req.code) throw new HttpError(400, { error: "Generate the screen first.", code: "bad_request" });
+  const msg = await client().beta.messages.create({
+    model: MODEL,
+    max_tokens: 3000,
+    system: VARIATIONS_SYSTEM,
+    output_config: { effort: "low", format: { type: "json_schema", schema: variationsSchema } },
+    messages: [
+      {
+        role: "user",
+        content: [
+          `Project brief: ${req.brief || "(none)"}`,
+          `Screen: ${req.surfaceName} on ${req.device}`,
+          req.existing.length ? `Already exists: ${req.existing.join(", ")}` : "",
+          `Screen code:\n${req.code}`,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+      },
+    ],
+    ...FALLBACK,
+  });
+  const out = jsonText(msg) as Omit<VariationsResponse, "usage">;
+  return { variations: out.variations.slice(0, 6), usage: usageOf(msg) };
 }
 
 const briefSchema = {
@@ -227,27 +284,73 @@ export async function importBrief(req: ImportRequest): Promise<ImportResponse> {
   return { ...out, usage: usageOf(msg) };
 }
 
+function errorBody(err: unknown): { status: number; body: ApiError } {
+  if (err instanceof HttpError) return { status: err.status, body: err.body };
+  if (err instanceof Anthropic.AuthenticationError) {
+    return { status: 401, body: { error: "The Anthropic API key was rejected.", code: "no_key" } };
+  }
+  if (err instanceof Anthropic.RateLimitError) {
+    return { status: 429, body: { error: "Rate limited by Anthropic. Wait a moment and try again.", code: "upstream" } };
+  }
+  if (err instanceof Anthropic.APIError) {
+    return { status: 502, body: { error: `Anthropic API error ${err.status}: ${err.message}`, code: "upstream" } };
+  }
+  console.error(err);
+  return { status: 500, body: { error: "Something went wrong on the server.", code: "upstream" } };
+}
+
+const json = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
 /** Wraps a handler as a web-standard POST endpoint (used by Vercel and the dev server). */
 export function endpoint<I, O>(fn: (input: I) => Promise<O>) {
   return async (request: Request): Promise<Response> => {
-    const json = (status: number, body: unknown) =>
-      new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
     try {
       const input = (await request.json()) as I;
       return json(200, await fn(input));
     } catch (err) {
-      if (err instanceof HttpError) return json(err.status, err.body);
-      if (err instanceof Anthropic.AuthenticationError) {
-        return json(401, { error: "The Anthropic API key was rejected.", code: "no_key" });
-      }
-      if (err instanceof Anthropic.RateLimitError) {
-        return json(429, { error: "Rate limited by Anthropic. Wait a moment and try again.", code: "upstream" });
-      }
-      if (err instanceof Anthropic.APIError) {
-        return json(502, { error: `Anthropic API error ${err.status}: ${err.message}`, code: "upstream" });
-      }
-      console.error(err);
-      return json(500, { error: "Something went wrong on the server.", code: "upstream" });
+      const { status, body } = errorBody(err);
+      return json(status, body);
     }
+  };
+}
+
+/**
+ * Like endpoint(), but streams newline-delimited JSON: progress lines while the model writes, then
+ * one {"type":"done","result":…} or {"type":"error",…} line. A missing key still fails up front
+ * with a normal status code.
+ */
+export function streamingEndpoint<I, O>(fn: (input: I, onProgress: (p: Progress) => void) => Promise<O>) {
+  return async (request: Request): Promise<Response> => {
+    let input: I;
+    try {
+      input = (await request.json()) as I;
+      client(); // fail fast with a proper status when there's no key
+    } catch (err) {
+      const { status, body } = errorBody(err);
+      return json(status, body);
+    }
+    const enc = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const send = (line: unknown) => controller.enqueue(enc.encode(JSON.stringify(line) + "\n"));
+        let last = 0;
+        try {
+          const result = await fn(input, (p) => {
+            const now = Date.now();
+            if (p.phase === "writing" && now - last < 250) return; // a few updates a second is plenty
+            last = now;
+            send({ type: "progress", ...p });
+          });
+          send({ type: "done", result });
+        } catch (err) {
+          send({ type: "error", ...errorBody(err).body });
+        }
+        controller.close();
+      },
+    });
+    return new Response(body, {
+      headers: { "content-type": "application/x-ndjson", "cache-control": "no-store", "x-accel-buffering": "no" },
+    });
   };
 }

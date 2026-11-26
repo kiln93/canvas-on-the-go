@@ -8,6 +8,9 @@
     },
     "api/import.ts": {
       "maxDuration": 60
+    },
+    "api/variations.ts": {
+      "maxDuration": 60
     }
   }
 }

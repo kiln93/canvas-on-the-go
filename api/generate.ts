@@ -1,2 +1,2 @@
-import { endpoint, generate } from "../server/claude.js";
-export const POST = endpoint(generate);
+import { generate, streamingEndpoint } from "../server/claude.js";
+export const POST = streamingEndpoint(generate);

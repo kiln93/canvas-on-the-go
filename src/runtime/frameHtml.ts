@@ -123,34 +123,140 @@ function Dialog({ open, onOpenChange, title, className, children }) {
     <div className={cn("relative w-full max-w-sm rounded-lg bg-background p-5 shadow-xl transition-all duration-200", open ? "scale-100 opacity-100" : "scale-95 opacity-0", className)}>{title && <h2 className="mb-2 text-lg font-semibold">{title}</h2>}{children}</div>
   </div>;
 }
+// ---- iOS-style app chrome and patterns ----
+// data-ui names what each part is, so a long press on the canvas can say what was picked.
+function StatusBar({ dark, className }) {
+  return <div data-ui="Status bar" className={cn("flex h-[54px] shrink-0 items-end justify-between px-8 pb-2 text-[15px] font-semibold", dark ? "text-white" : "text-foreground", className)}>
+    <span>9:41</span>
+    <span className="flex items-center gap-1.5">
+      <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+      <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 2.5c2.3 0 4.4.9 6 2.4l1.2-1.3A10.4 10.4 0 0 0 8 .8C5.2.8 2.7 1.9.8 3.6L2 4.9a8.6 8.6 0 0 1 6-2.4zm0 3.4c1.4 0 2.6.5 3.6 1.4l1.2-1.3A7 7 0 0 0 8 4.2 7 7 0 0 0 3.2 6l1.2 1.3c1-.9 2.2-1.4 3.6-1.4zm0 3.3c.6 0 1.1.2 1.5.6L8 11.4 6.5 9.8c.4-.4.9-.6 1.5-.6z"/></svg>
+      <span className="relative ml-0.5 inline-block h-[13px] w-[27px] rounded-[4px] border border-current/40 p-[1.5px]"><span className="block h-full w-[80%] rounded-[2px] bg-current" /></span>
+    </span>
+  </div>;
+}
+function HomeIndicator({ dark }) {
+  return <div data-ui="Home indicator" className="pointer-events-none flex h-[34px] shrink-0 items-end justify-center pb-2"><div className={cn("h-[5px] w-[134px] rounded-full", dark ? "bg-white" : "bg-foreground")} /></div>;
+}
+function NavBar({ title, large = false, back, onBack, trailing, className }) {
+  return <div data-ui="Navigation bar" className={cn("shrink-0 bg-background/80 backdrop-blur-xl", className)}>
+    <div className="relative flex h-11 items-center px-4">
+      {back && <button onClick={onBack} className="-ml-2 flex items-center gap-0.5 text-[17px] text-primary active:opacity-50"><Icon name="chevron-left" className="h-6 w-6" />{back}</button>}
+      {!large && <div className="pointer-events-none absolute inset-x-16 truncate text-center text-[17px] font-semibold">{title}</div>}
+      <div className="ml-auto flex items-center gap-4 text-primary">{trailing}</div>
+    </div>
+    {large && <h1 className="px-4 pb-2 pt-0.5 text-[34px] font-bold leading-[41px] tracking-[0.01em]">{title}</h1>}
+  </div>;
+}
+function TabBar({ items, value, onChange, className }) {
+  return <nav data-ui="Tab bar" className={cn("flex shrink-0 border-t border-border bg-background/90 pb-[34px] pt-1.5 backdrop-blur-xl", className)}>
+    {items.map((it) => { const on = it.value === value; return <button key={it.value} onClick={() => onChange && onChange(it.value)} className={cn("flex flex-1 flex-col items-center gap-0.5 text-[10px] font-medium transition-colors active:opacity-60", on ? "text-primary" : "text-muted-foreground")}>
+      <span className="relative"><Icon name={it.icon} className="h-[26px] w-[26px]" />{it.badge ? <span className="absolute -right-2 -top-1 min-w-[18px] rounded-full bg-destructive px-1 text-[11px] leading-[18px] text-white">{it.badge}</span> : null}</span>{it.label}
+    </button>; })}
+  </nav>;
+}
+function ListGroup({ header, footer, className, children }) {
+  return <section data-ui="List" className={cn("px-4", className)}>
+    {header && <h2 className="px-4 pb-1.5 text-[13px] uppercase tracking-wide text-muted-foreground">{header}</h2>}
+    <div className="overflow-hidden rounded-[10px] bg-card [&>*+*]:border-t [&>*+*]:border-border">{children}</div>
+    {footer && <p className="px-4 pt-1.5 text-[13px] text-muted-foreground">{footer}</p>}
+  </section>;
+}
+function ListRow({ icon, iconBg = "bg-primary", title, subtitle, value, chevron, toggle, onToggle, onClick, destructive, className }) {
+  const Tag = onClick || chevron ? "button" : "div";
+  return <Tag data-ui="List row" onClick={onClick} className={cn("flex min-h-11 w-full items-center gap-3 px-4 py-2.5 text-left active:bg-accent", className)}>
+    {icon && <span className={cn("flex h-[29px] w-[29px] shrink-0 items-center justify-center rounded-[7px] text-white", iconBg)}><Icon name={icon} className="h-[18px] w-[18px]" /></span>}
+    <span className="min-w-0 flex-1"><span className={cn("block truncate text-[17px]", destructive && "text-destructive")}>{title}</span>{subtitle && <span className="block truncate text-[15px] text-muted-foreground">{subtitle}</span>}</span>
+    {value != null && <span className="shrink-0 text-[17px] text-muted-foreground">{value}</span>}
+    {toggle !== undefined && <Switch checked={toggle} onCheckedChange={onToggle} />}
+    {chevron && <Icon name="chevron-right" className="h-4 w-4 text-muted-foreground/60" />}
+  </Tag>;
+}
+function SegmentedControl({ options, value, onChange, className }) {
+  return <div data-ui="Segmented control" className={cn("flex rounded-[9px] bg-muted p-0.5", className)}>
+    {options.map((o) => { const v = typeof o === "string" ? o : o.value; const label = typeof o === "string" ? o : o.label; return <button key={v} onClick={() => onChange && onChange(v)} className={cn("flex-1 rounded-[7px] py-1.5 text-[13px] font-medium transition-all", v === value ? "bg-background shadow-sm" : "text-foreground/70")}>{label}</button>; })}
+  </div>;
+}
+function SearchField({ value, onChange, placeholder = "Search", className }) {
+  return <label data-ui="Search field" className={cn("flex h-9 items-center gap-1.5 rounded-[10px] bg-muted px-2 text-muted-foreground", className)}>
+    <Icon name="search" className="h-4 w-4" />
+    <input value={value} onChange={(e) => onChange && onChange(e.target.value)} placeholder={placeholder} className="h-full flex-1 bg-transparent text-[17px] text-foreground outline-none placeholder:text-muted-foreground" />
+  </label>;
+}
+function Screen({ children, tabBar, dark, grouped, className, style }) {
+  // A full device screen: status bar, scrolling content, then a tab bar or the home indicator.
+  return <div style={style} className={cn("flex h-full w-full flex-col overflow-hidden text-foreground", grouped ? "bg-grouped" : "bg-background", dark && "dark", className)}>
+    <StatusBar dark={dark} />
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
+    {tabBar || <HomeIndicator dark={dark} />}
+  </div>;
+}
+
 `;
 
 const THEME = `
 @custom-variant dark (&:where(.dark, .dark *));
 @theme {
-  --color-background: #ffffff; --color-foreground: #0a0a0a;
-  --color-card: #ffffff; --color-card-foreground: #0a0a0a;
-  --color-primary: #171717; --color-primary-foreground: #fafafa;
-  --color-secondary: #f5f5f5; --color-secondary-foreground: #171717;
-  --color-muted: #f5f5f5; --color-muted-foreground: #737373;
-  --color-accent: #f5f5f5; --color-accent-foreground: #171717;
-  --color-destructive: #e7000b; --color-border: #e5e5e5; --color-ring: #a1a1a1;
-  --radius-lg: 0.625rem; --radius-md: 0.5rem; --radius-sm: 0.375rem;
+  /* iOS system roles. --color-primary is the app's tint; a screen can set its own. */
+  --color-background: #ffffff; --color-foreground: #000000;
+  --color-grouped: #f2f2f7;
+  --color-card: #ffffff; --color-card-foreground: #000000;
+  --color-primary: #007aff; --color-primary-foreground: #ffffff;
+  --color-secondary: #f2f2f7; --color-secondary-foreground: #000000;
+  --color-muted: #7676801f; --color-muted-foreground: #3c3c4399;
+  --color-accent: #f2f2f7; --color-accent-foreground: #000000;
+  --color-destructive: #ff3b30; --color-border: #3c3c4336; --color-ring: #007aff80;
+  --radius-lg: 0.875rem; --radius-md: 0.625rem; --radius-sm: 0.5rem;
 }
 .dark {
-  --color-background: #0a0a0a; --color-foreground: #fafafa;
-  --color-card: #171717; --color-card-foreground: #fafafa;
-  --color-primary: #e5e5e5; --color-primary-foreground: #171717;
-  --color-secondary: #262626; --color-secondary-foreground: #fafafa;
-  --color-muted: #262626; --color-muted-foreground: #a1a1a1;
-  --color-accent: #262626; --color-accent-foreground: #fafafa;
-  --color-border: #ffffff1a; --color-ring: #737373;
+  --color-background: #000000; --color-foreground: #ffffff;
+  --color-grouped: #000000;
+  --color-card: #1c1c1e; --color-card-foreground: #ffffff;
+  --color-primary: #0a84ff; --color-primary-foreground: #ffffff;
+  --color-secondary: #2c2c2e; --color-secondary-foreground: #ffffff;
+  --color-muted: #7676803d; --color-muted-foreground: #ebebf599;
+  --color-accent: #2c2c2e; --color-accent-foreground: #ffffff;
+  --color-destructive: #ff453a; --color-border: #54545899; --color-ring: #0a84ff80;
 }
+`;
+
+const GSAP_FILES = ["gsap.js", "gsap-flip.js", "gsap-draggable.js", "gsap-scrolltrigger.js", "gsap-customease.js"];
+
+// Lets the canvas ask "what's at this point?" so a long press can attach a note to one component.
+// Replies with the element's box (frame pixels) and a short description of it.
+const PICKER = String.raw`
+function describe(el){
+  var tag=el.tagName.toLowerCase(), role=el.getAttribute("role")||"", aria=el.getAttribute("aria-label")||"";
+  var kind=el.dataset.ui||(tag==="button"||role==="button"?"Button":tag==="input"||tag==="textarea"?"Field":tag==="img"||tag==="svg"?"Image":/^h[1-6]$/.test(tag)?"Heading":tag==="nav"?"Navigation":role==="switch"?"Switch":role==="tab"?"Tab":"");
+  var text=(aria||el.innerText||el.getAttribute("placeholder")||"").replace(/\s+/g," ").trim().slice(0,60);
+  return (kind?kind+" ":"")+(text?"“"+text+"”":tag);
+}
+function pick(x,y){
+  var el=document.elementFromPoint(x,y);
+  // Climb to something a designer would call a component: a control, a card, or a labelled block.
+  var cur=el, best=el;
+  while(cur&&cur!==document.body&&cur.id!=="root"){
+    var r=cur.getBoundingClientRect();
+    if(cur.matches&&cur.matches("button,a,input,textarea,select,img,svg,[role],[data-ui],h1,h2,h3,h4,nav,header,footer,li")){best=cur;break;}
+    if(r.width*r.height>innerWidth*innerHeight*0.5)break;
+    best=cur;cur=cur.parentElement;
+  }
+  if(!best)return null;
+  var b=best.getBoundingClientRect();
+  return {x:b.left,y:b.top,w:b.width,h:b.height,label:describe(best)};
+}
+window.addEventListener("message",function(e){
+  if(e.data&&e.data.type==="pick"){parent.postMessage({type:"picked",id:e.data.id,hit:pick(e.data.x,e.data.y)},"*");}
+});
 `;
 
 export function frameHtml(code: string, opts: { dark?: boolean } = {}): string {
   // srcdoc frames have no base URL of their own, so point at this app's origin explicitly.
   const rt = `${location.origin}/runtime`;
+  // Only load the motion libraries a screen actually uses.
+  const gsap = /\bgsap\b/.test(code);
+  const motion = /\bMotion\b|\bmotion\.|AnimatePresence/.test(code);
+  const three = /\bTHREE\b/.test(code);
   // Escape "</script" so generated code can't close the script tag early.
   const safe = (s: string) => s.replace(/<\/script/gi, "<\\/script");
   return `<!doctype html>
@@ -158,19 +264,26 @@ export function frameHtml(code: string, opts: { dark?: boolean } = {}): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="${rt}/tailwind.js"></script>
 <style type="text/tailwindcss">${THEME}</style>
-<style>html,body,#root{height:100%;margin:0}body{font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}#err{font:12px ui-monospace,monospace;color:#b42318;padding:12px;white-space:pre-wrap}</style>
+<style>html,body,#root{height:100%;margin:0}body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}#err{font:12px ui-monospace,monospace;color:#b42318;padding:12px;white-space:pre-wrap}</style>
 <script src="${rt}/react.js"></script>
 <script src="${rt}/react-dom.js"></script>
 <script src="${rt}/babel.js"></script>
+${motion ? `<script src="${rt}/motion.js"></script>` : ""}
+${gsap ? GSAP_FILES.map((f) => `<script src="${rt}/${f}"></script>`).join("") : ""}
 </head><body><div id="root"></div>
 <script>
 function showError(e){document.getElementById("root").innerHTML='<div id="err"></div>';document.getElementById("err").textContent="This frame hit an error:\\n"+(e&&e.message||e);parent.postMessage({type:"frame-error",message:String(e&&e.message||e)},"*");}
 window.addEventListener("error",function(ev){showError(ev.error||ev.message)});
+${PICKER}
+</script>
+<script type="module">
 try{
+  ${three ? `window.THREE = await import("${rt}/three.module.js");` : ""}
+  ${gsap ? `if (window.gsap) gsap.registerPlugin(...[window.Flip, window.Draggable, window.ScrollTrigger, window.CustomEase].filter(Boolean));` : ""}
   var src=${JSON.stringify(safe(KIT))}+"\\n"+${JSON.stringify(safe(code))}+"\\nReactDOM.createRoot(document.getElementById('root')).render(<App/>);";
   var out=Babel.transform(src,{presets:["react"]}).code;
   new Function(out)();
-  parent.postMessage({type:"frame-ready"},"*");
+  requestAnimationFrame(function(){parent.postMessage({type:"frame-ready"},"*")});
 }catch(e){showError(e)}
 </script></body></html>`;
 }
