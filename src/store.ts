@@ -64,6 +64,8 @@ export type Frame = {
 
 export type Project = {
   brief: string;
+  /** An optional screenshot whose look new screens should match (base64 JPEG, no data: prefix). */
+  styleRef?: string;
   frames: Frame[];
   spend: { month: string; cost: number };
   cap: number;
@@ -171,8 +173,8 @@ export function redo() {
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
 
-export function setBrief(brief: string) {
-  state = { ...state, project: { ...state.project, brief } };
+export function setBrief(brief: string, styleRef?: string) {
+  state = { ...state, project: { ...state.project, brief, styleRef } };
   emit();
 }
 

@@ -180,8 +180,8 @@ export function applyEdits(code: string, edits: { find: string; replace: string 
   return out;
 }
 
-function image(data: string): Anthropic.Beta.BetaImageBlockParam {
-  return { type: "image", source: { type: "base64", media_type: "image/png", data } };
+function image(data: string, media_type: "image/png" | "image/jpeg" = "image/png"): Anthropic.Beta.BetaImageBlockParam {
+  return { type: "image", source: { type: "base64", media_type, data } };
 }
 
 export async function suggest(req: SuggestRequest): Promise<SuggestResponse> {
@@ -242,6 +242,10 @@ async function generateOnce(
   onProgress?: (p: Progress) => void,
 ): Promise<GenerateResponse | null> {
   const content: Anthropic.Beta.BetaContentBlockParam[] = [];
+  if (req.styleRef) {
+    content.push({ type: "text", text: "Style reference (match its look, not its content):" });
+    content.push(image(req.styleRef, "image/jpeg"));
+  }
   if (req.image) content.push(image(req.image));
   content.push({
     type: "text",

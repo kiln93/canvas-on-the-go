@@ -369,3 +369,11 @@ button.tag { cursor: pointer; }
 .note-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .note-change { font-size: 12px; color: var(--icon); }
 .note-skipped { font-size: 12px; color: #8a2b1d; }
+
+/* Brief dialog: optional style reference */
+.style-ref { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-input); }
+.style-ref img, .style-ref-empty { width: 48px; height: 64px; object-fit: cover; border-radius: 8px; flex-shrink: 0; border: 1px solid var(--border); }
+.style-ref-empty { background: repeating-linear-gradient(45deg, #f0ede7 0 6px, #faf8f5 6px 12px); }
+.style-ref-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 180px; }
+.style-ref label.btn { display: inline-flex; align-items: center; cursor: pointer; }
+.style-ref-actions { display: flex; gap: 4px; align-items: center; }

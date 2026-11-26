@@ -18,6 +18,7 @@
     "framer-motion": "14.14.0",
     "gsap": "3.15.1",
     "img-fx": "0.5.1",
+    "lucide": "1.80.0",
     "perfect-freehand": "^1.2.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

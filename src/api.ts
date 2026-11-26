@@ -181,6 +181,7 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
       notes,
       previousCode,
       instruction,
+      styleRef: getState().project.styleRef,
       designSystem: "shadcn",
     };
     // Building fills the first 60% of the bar; the review and its fixes the rest.

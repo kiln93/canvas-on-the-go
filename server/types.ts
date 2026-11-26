@@ -29,6 +29,7 @@ export type GenerateRequest = {
   image?: string; // the sketch, or markups drawn over the live frame
   notes: string[]; // the confirmed note lines
   previousCode?: string; // present when iterating or making a variation
+  styleRef?: string; // the project's style reference image (base64 JPEG), if the designer set one
   instruction?: string; // e.g. "empty state" for a variation
   designSystem: "shadcn";
 };

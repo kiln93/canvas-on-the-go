@@ -23,7 +23,8 @@ shadcn/ui components:
 - Separator; Progress: value (0-100); Skeleton
 - Sheet: open, onOpenChange, side ("bottom" | "right"), children (slides in with motion)
 - Dialog: open, onOpenChange, title, children
-- Icon: name, className. Names: home, search, user, settings, bell, plus, minus, chevron-left, chevron-right, chevron-down, x, check, heart, star, menu, more, calendar, image, send, mic, camera, map-pin, mail, lock, trash, edit, filter, share, bookmark, play, pause, cart, arrow-right, arrow-left, clock, message, grid, list, sun, moon, wallet, chart
+- Icon: name, className, strokeWidth. name is any Lucide icon in kebab-case (about 2,400: "shopping-bag", "flame", "plane-takeoff", "credit-card", "receipt", "dumbbell", "chef-hat", "sparkles"…). Pick the most specific icon for the meaning.
+- Photo: query (2 or 3 specific words, e.g. "latte art", "trail runner", "studio apartment"), ratio ("4/3", "16/9", "1/1", "3/4"), className, alt. A real photo matching the query. Use it for covers, products, food, places, people and avatars (with className "rounded-full h-10 w-10" and ratio "1/1").
 
 React hooks are globals: useState, useEffect, useRef, useMemo, useCallback.
 
@@ -83,7 +84,9 @@ Content:
 - Real, specific, internally consistent data for this product: names, units, currency, relative times ("2m", "Yesterday"), totals that add up, varied string lengths. Status bar time is 9:41. Never lorem ipsum, "User Name", "Item 1", "Acme", or invented marketing claims.
 - Include the modules people expect in this category (streaks and check-ins for habits, balance and transactions for money, player controls for media, cart for commerce) and one state worth seeing, like an unread badge or a low-stock note.
 - Buttons name the action ("Log run", not "Submit"). Errors say what happened and what to do, with no "Oops". An empty state says what's empty, why it matters, and offers one action.
-- Images: use tinted placeholders with an aspect ratio (a soft color block with an icon), never external image URLs. No emoji as icons; use Icon.
+- Images: use Photo wherever the product would show a photo (feeds, covers, products, food, places, people). Never other image URLs. No emoji as icons; use Icon.
+- Richness: aim for the polish of a top App Store app in this category, not a wireframe. Give the screen a hero with presence (a photo, a big number, a map, a chart drawn with divs or SVG), real imagery, specific icons, and enough content to fill the screen past the fold.
+- If a style reference image is given, match its visual language: palette, type scale and weight, density, corner radius, depth and image treatment. Never copy its content, layout or brand.
 
 Behavior and motion:
 - Make it work: tabs switch content, toggles toggle, inputs type, lists scroll, buttons respond, sheets open and close, and state changes show (a logged habit is checked, a counter goes up).
