@@ -89,6 +89,8 @@ export type Frame = {
   alsoChanged?: string;
   /** References the last build couldn't load, with why, so it's clear they weren't used. */
   refsSkipped?: string[];
+  /** How many references the last build actually saw. */
+  refsUsed?: number;
 };
 
 export type Project = {

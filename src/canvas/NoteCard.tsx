@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { keyboardOnPencilTap, primeKeyboard } from "./keyboard";
 import { ThinkingOrb } from "thinking-orbs";
-import { buildInputs, COST_ESTIMATE, dollars, NOTHING_TO_BUILD, runGenerate, runSuggest, surfaceJob } from "../api";
+import { buildCost, buildInputs, COST_ESTIMATE, dollars, NOTHING_TO_BUILD, runGenerate, runSuggest, surfaceJob } from "../api";
 import { NOTE_TAGS, uid, updateFrame, useStore, type Frame, type NoteItem, type NoteTag } from "../store";
 import { shrinkImage } from "../images";
 import { MAX_REFS, openMobbin, suggestRefs } from "./MobbinPicker";
@@ -150,7 +150,7 @@ export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperti
               </button>
             )}
             <button className="btn ink" disabled={!!f.busy || !inputs.any} onClick={() => runGenerate(f.id)}>
-              {inputs.refs && !inputs.notes && !inputs.markups ? "Rebuild with references" : "Rebuild"} · {dollars(COST_ESTIMATE.variation)}
+              {inputs.refs && !inputs.notes && !inputs.markups ? "Rebuild with references" : "Rebuild"} · {dollars(buildCost(f))}
             </button>
           </>
         ) : (
@@ -423,6 +423,9 @@ function References({ frame: f }: { frame: Frame }) {
       </div>
       {viewing && <RefViewer frame={f} id={viewing} onClose={() => setViewing(null)} onRemove={(id) => (remove(id), setViewing(null))} />}
       {error && <p className="small note-skipped">{error}</p>}
+      {f.code && f.refsUsed !== undefined && !!refs.length && !f.refsSkipped?.length && !buildInputs(f).refs && (
+        <p className="muted small">The last build used {f.refsUsed === refs.length ? `all ${refs.length}` : `${f.refsUsed} of ${refs.length}`} references.</p>
+      )}
       {!!f.refsSkipped?.length && (
         <div className="small note-skipped refs-skipped" role="status">
           The last build couldn't use every reference:

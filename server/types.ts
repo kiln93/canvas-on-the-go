@@ -66,6 +66,8 @@ export type GenerateResponse = {
   alsoChanged?: string;
   /** References the build couldn't load, each with why. */
   refsSkipped?: string[];
+  /** How many references the build actually saw. */
+  refsUsed?: number;
   usage: Usage;
 };
 

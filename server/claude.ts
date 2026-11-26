@@ -254,7 +254,8 @@ const skillsBlock: Anthropic.Beta.BetaTextBlockParam = {
 const withSkills = (prompt: string): Anthropic.Beta.BetaTextBlockParam[] => [skillsBlock, { type: "text", text: prompt }];
 
 export async function generate(req: GenerateRequest, onProgress?: (p: Progress) => void): Promise<GenerateResponse> {
-  if (req.previousCode) {
+  // New references mean a redesign, not a tweak: write the screen out in full on the first-build model.
+  if (req.previousCode && !req.refsNew) {
     const edited = await generateOnce(req, true, onProgress);
     if (edited) return edited;
     // The edits didn't line up with the code: fall back to writing the screen out in full.
@@ -311,7 +312,9 @@ async function generateOnce(
           }`
         : "",
       req.instruction ? `Instruction: ${req.instruction}` : "",
-      req.previousCode ? `previousCode:\n${req.previousCode}` : "",
+      req.previousCode
+        ? `${req.refsNew && !asEdits ? "The current screen, for its content and purpose only; redesign its look and layout after the references" : "previousCode"}:\n${req.previousCode}`
+        : "",
       asEdits ? EDIT_RULES : "",
       req.image
         ? req.previousCode
@@ -322,7 +325,8 @@ async function generateOnce(
       .filter(Boolean)
       .join("\n\n"),
   });
-  const fresh = !req.previousCode;
+  // A first build, or a redesign after new references, gets the stronger model.
+  const fresh = !req.previousCode || (!!req.refsNew && loaded.length > 0);
   // Streaming keeps long generations under HTTP timeouts.
   const stream = client().beta.messages.stream({
     model: fresh ? FIRST_BUILD_MODEL : BUILD_MODEL,
@@ -348,10 +352,10 @@ async function generateOnce(
     const out = jsonText(msg) as { title: string; summary: string; edits: { find: string; replace: string }[]; notes_done: Done; also_changed?: string };
     const code = applyEdits(req.previousCode ?? "", out.edits);
     if (code == null) return null;
-    return { title: out.title, summary: out.summary, code, notesDone: notesDone(out.notes_done), alsoChanged: out.also_changed?.trim() || undefined, refsSkipped, usage: usageOf(msg) };
+    return { title: out.title, summary: out.summary, code, notesDone: notesDone(out.notes_done), alsoChanged: out.also_changed?.trim() || undefined, refsSkipped, refsUsed: loaded.length, usage: usageOf(msg) };
   }
   const out = jsonText(msg) as { title: string; summary: string; code: string; notes_done: Done; also_changed?: string };
-  return { title: out.title, summary: out.summary, code: out.code, notesDone: notesDone(out.notes_done), alsoChanged: out.also_changed?.trim() || undefined, refsSkipped, usage: usageOf(msg) };
+  return { title: out.title, summary: out.summary, code: out.code, notesDone: notesDone(out.notes_done), alsoChanged: out.also_changed?.trim() || undefined, refsSkipped, refsUsed: loaded.length, usage: usageOf(msg) };
 }
 
 const reviewSchema = {

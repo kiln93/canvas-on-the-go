@@ -1,5 +1,5 @@
 /** Shrinks a picked image to at most `max` px on its long side, as base64 JPEG (no data: prefix). */
-export async function shrinkImage(file: File, max = 1024): Promise<string> {
+export async function shrinkImage(file: Blob, max = 1024): Promise<string> {
   const bmp = await createImageBitmap(file);
   const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
   const c = document.createElement("canvas");
