@@ -54,6 +54,8 @@ export type GenerateRequest = {
   assumed?: string; // Claude's stated reading of the sketch, which the designer saw
   otherScreens?: string[]; // names of the project's other screens
   refsNew?: boolean; // the references changed since the last build
+  // With previousCode: "screen" rebuilds the whole screen (notes on no part, new references); "parts" changes only pinned parts.
+  scope?: "screen" | "parts";
 };
 
 export type GenerateResponse = {
@@ -66,6 +68,8 @@ export type GenerateResponse = {
   alsoChanged?: string;
   /** References the build couldn't load, each with why. */
   refsSkipped?: string[];
+  /** How many references the build actually saw. */
+  refsUsed?: number;
   usage: Usage;
 };
 

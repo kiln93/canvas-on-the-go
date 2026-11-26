@@ -24,7 +24,7 @@ import { useCloseOnOutsideTap } from "../useCloseOnOutsideTap";
 import { NoteComposer, NoteTargetBox, type NoteTarget } from "./NoteComposer";
 import { primeKeyboard } from "./keyboard";
 import { pickInFrame } from "./pick";
-import { buildInputs, COST_ESTIMATE, dollars, runGenerate, runSuggest } from "../api";
+import { buildCost, buildInputs, COST_ESTIMATE, dollars, runGenerate, runSuggest } from "../api";
 
 /** Drawing tools, used only in the drawing view. The canvas itself only moves and opens screens. */
 export type Tool = "pen" | "eraser";
@@ -644,10 +644,15 @@ function FocusBar({ frame: f, onDone, onPlay }: { frame: Frame; onDone: () => vo
           </button>
         )}
         {buildInputs(f).any && (
-          <button className="btn ink" disabled={!!f.busy} onClick={() => runGenerate(f.id)}>
+          <button
+            className="btn ink"
+            disabled={!!f.busy}
+            onClick={() => runGenerate(f.id)}
+            title={!f.code ? "Build this screen" : buildInputs(f).screen ? "Rebuild the whole screen" : "Rebuild only the parts your notes and markups point at"}
+          >
             {f.code ? "Rebuild" : "Generate"}
-            <span className="focus-cost"> · {dollars(f.code ? COST_ESTIMATE.variation : COST_ESTIMATE.screen)}</span>
-            <span className="focus-cost-short"> · {dollars(f.code ? COST_ESTIMATE.variation : COST_ESTIMATE.screen).replace("about ", "~")}</span>
+            <span className="focus-cost"> · {dollars(buildCost(f))}</span>
+            <span className="focus-cost-short"> · {dollars(buildCost(f)).replace("about ", "~")}</span>
           </button>
         )}
       </header>

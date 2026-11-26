@@ -13,6 +13,7 @@ import type {
   VariationsResponse,
 } from "../server/types";
 import { rasterize } from "./canvas/ink";
+import { shrinkImage } from "./images";
 import { useSyncExternalStore } from "react";
 import { addFrame, addSpend, DEVICES, getState, NOTE_TAGS, updateFrame, type Frame, type NoteItem } from "./store";
 
@@ -188,8 +189,30 @@ export function buildInputs(f: Frame) {
   const markups = f.strokes.some((s) => s.kind === "markup");
   const sketch = !f.code && f.strokes.some((s) => s.kind === "sketch");
   const refs = !!f.refs?.length && refsKey(f) !== (f.refsBuilt ?? "");
-  return { notes, markups, sketch, refs, any: notes > 0 || markups || sketch || refs };
+  // Notes pinned to a part change that part; a note on no part, or new references, rebuild the whole screen.
+  const wholeNotes = f.notes.filter((n) => n.status === "accepted" && !standing(n) && !n.region).length;
+  const screen = !!f.code && (refs || wholeNotes > 0);
+  return { notes, markups, sketch, refs, screen, any: notes > 0 || markups || sketch || refs };
 }
+/** A whole-screen rebuild runs on the first-build model, so it costs like a new screen; a rebuild of pinned parts is a cheap edit. */
+export const buildCost = (f: Frame) => (!f.code || buildInputs(f).screen ? COST_ESTIMATE.screen : COST_ESTIMATE.variation);
+
+/**
+ * Loads a Mobbin reference in the browser, where it already displays, as a small JPEG for this build only.
+ * The server fetches the link itself when the browser isn't allowed to read it.
+ */
+async function refForBuild(r: NonNullable<Frame["refs"]>[number]) {
+  if (r.data || !r.url) return { data: r.data, url: r.url, note: r.note };
+  try {
+    const res = await fetch(r.url, { mode: "cors", referrerPolicy: "no-referrer", signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(String(res.status));
+    const data = await shrinkImage(await res.blob(), 1280);
+    return { data, note: r.note };
+  } catch {
+    return { url: r.url, note: r.note };
+  }
+}
+
 export const NOTHING_TO_BUILD = "Add a note, mark up the screen, or change a reference, then rebuild.";
 
 /** Builds (or rebuilds) the live screen from the sketch, notes and any markups. */
@@ -227,12 +250,13 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
       previousCode,
       instruction,
       styleRef: getState().project.styleRef,
-      refs: f.refs?.map((r) => ({ data: r.data, url: r.url, note: r.note })),
+      refs: f.refs?.length ? await Promise.all(f.refs.map(refForBuild)) : undefined,
       designSystem: "shadcn",
       job: surfaceJob(f) || undefined,
       assumed: !f.code ? f.assumed : undefined,
       otherScreens: otherScreens(f),
       refsNew: refsChanged,
+      scope: f.code && buildInputs(f).screen ? "screen" : "parts",
     };
     // Building fills the first 60% of the bar; the review and its fixes the rest.
     const built = await postStream<GenerateResponse>("/api/generate", req, (l) => {
@@ -290,6 +314,7 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
         summary: out.summary,
         alsoChanged: built.alsoChanged,
         refsSkipped: built.refsSkipped?.length ? built.refsSkipped : undefined,
+        refsUsed: built.refsUsed,
         review: out.review,
         name: cur.name || out.title,
         approved: false,
