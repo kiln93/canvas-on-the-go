@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
-import { importPrd } from "./api";
+import { importPrd, runVariations } from "./api";
 import { Canvas, type Tool } from "./canvas/Canvas";
 import { frameHtml } from "./runtime/frameHtml";
 import { DEVICES, getState, redo, set, setBrief, undo, useStore, type DeviceId } from "./store";
@@ -28,6 +28,23 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // The first time you open a surface with a built screen, design its other states too.
+  const surfaceId = useStore((s) => s.surfaceId);
+  useEffect(() => {
+    if (!surfaceId) return;
+    const { frames } = getState().project;
+    const primary = frames.find((f) => f.id === surfaceId);
+    const hasVariations = frames.some((f) => f.surfaceId === surfaceId && f.id !== surfaceId);
+    if (primary?.code && !primary.variationsPlanned && !hasVariations) runVariations(surfaceId);
+  }, [surfaceId]);
+
+  // "Draw" on a frame picks up the pen (the canvas zooms in on it).
+  useEffect(() => {
+    const pen = () => setTool("pen");
+    window.addEventListener("cotg:focus", pen);
+    return () => window.removeEventListener("cotg:focus", pen);
   }, []);
 
   // After a frame is created, switch to the pen so you can sketch straight away.

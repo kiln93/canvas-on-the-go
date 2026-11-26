@@ -11,7 +11,23 @@ export const DEVICES: Record<DeviceId, { label: string; w: number; h: number }> 
   desktop: { label: "Desktop", w: 1440, h: 900 },
 };
 
-export type NoteItem = Suggestion & { status: "pending" | "accepted" | "dismissed"; mine?: boolean };
+/** What a note is about; the screen generator reads it as a label on the note. */
+export type NoteTag = "ui" | "interaction" | "motion" | "copy" | "data";
+export const NOTE_TAGS: { id: NoteTag; label: string }[] = [
+  { id: "ui", label: "UI" },
+  { id: "interaction", label: "Interaction" },
+  { id: "motion", label: "Motion" },
+  { id: "copy", label: "Copy" },
+  { id: "data", label: "Data" },
+];
+
+// "applied" notes were built into the screen; they move to the note card's History.
+export type NoteItem = Suggestion & {
+  status: "pending" | "accepted" | "dismissed" | "applied";
+  mine?: boolean;
+  appliedAt?: number;
+  tag?: NoteTag;
+};
 
 export type Version = { code: string; summary: string; at: number };
 
@@ -32,8 +48,10 @@ export type Frame = {
   versions: Version[];
   approved: boolean;
   showSketch: boolean;
-  busy?: "suggesting" | "generating";
+  busy?: "suggesting" | "generating" | "planning";
   error?: string;
+  /** Set on a surface's primary frame once its variations have been planned, so it happens once. */
+  variationsPlanned?: boolean;
 };
 
 export type Project = {

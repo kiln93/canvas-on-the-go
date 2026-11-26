@@ -148,6 +148,13 @@ input, textarea { -webkit-user-select: text; user-select: text; }
   flex: 1; height: 36px; padding: 0 12px; border-radius: var(--r-input); border: 1px solid var(--border); background: #fff; outline: none;
 }
 .add-note input:focus, .variation input:focus, .meter-pop input:focus, .modal textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(1, 106, 113, 0.12); }
+.note-history { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 8px; }
+.history-toggle { display: flex; gap: 6px; align-items: center; background: none; border: 0; padding: 4px 0; color: var(--icon); font-size: 12px; font-weight: 500; cursor: pointer; }
+.history-toggle .chev { display: inline-block; transition: transform 0.15s ease; }
+.history-toggle .chev.open { transform: rotate(90deg); }
+.history-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.history-list li { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: var(--text-muted); }
+.history-list .note-text { cursor: default; }
 .note-foot { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
 .variation {
   flex-basis: 100%; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-card); background: var(--surface);
@@ -245,3 +252,34 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .mic-error { margin: 6px 0 0; font-size: 12px; color: #8a2b1d; }
 .icon-btn.mic.on { animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.55; } }
+
+/* Long-press notes */
+.note-target {
+  position: absolute; border: 2px solid var(--accent); border-radius: 6px; pointer-events: none;
+  background: rgba(1, 106, 113, 0.06); animation: target-in 0.25s ease-out;
+}
+@keyframes target-in { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; transform: none; } }
+.note-composer {
+  position: absolute; width: 320px; padding: 12px; transform-origin: 0 0; z-index: 2;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card);
+  box-shadow: 0 1px 0 rgba(39, 37, 30, 0.04);
+}
+.note-composer .add-note { margin-top: 8px; }
+.note-composer-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; color: var(--icon); }
+.press-ring {
+  position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%;
+  border: 2px solid var(--accent); pointer-events: none; animation: press 0.45s ease-out forwards;
+}
+@keyframes press { from { transform: scale(0.3); opacity: 0.2; } to { transform: scale(1); opacity: 1; } }
+
+/* Note tags: what a note is about. Neutral by default; the chosen one is ink. */
+.tag-picker { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 12px; }
+.note-composer .tag-picker { margin-top: 8px; }
+.tag {
+  height: 22px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface);
+  font-size: 11px; font-weight: 500; color: var(--icon); line-height: 20px; white-space: nowrap; flex-shrink: 0;
+}
+button.tag { cursor: pointer; }
+.tag.on { background: var(--ink); border-color: var(--ink); color: var(--canvas); }
+.note .tag { margin-top: 0; }
+.add-note { margin-top: 8px; }

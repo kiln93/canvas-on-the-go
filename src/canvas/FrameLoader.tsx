@@ -14,6 +14,7 @@ type Phase = FrameProgress["phase"] | "loading";
 
 const ORB: Record<Phase, OrbState> = {
   reading: "searching",
+  planning: "connecting",
   thinking: "working",
   writing: "composing",
   rendering: "shaping",
@@ -22,6 +23,7 @@ const ORB: Record<Phase, OrbState> = {
 
 const LABEL: Record<Phase, string> = {
   reading: "Reading your sketch",
+  planning: "Planning the variations",
   thinking: "Planning the layout",
   writing: "Writing the screen",
   rendering: "Drawing the screen",

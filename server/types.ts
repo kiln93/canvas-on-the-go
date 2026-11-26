@@ -50,3 +50,6 @@ export type GenerateStreamLine =
   | { type: "progress"; phase: "thinking" | "writing"; chars: number }
   | { type: "done"; result: GenerateResponse }
   | ({ type: "error" } & ApiError);
+
+export type VariationsRequest = { brief: string; surfaceName: string; device: string; code: string; existing: string[] };
+export type VariationsResponse = { variations: { name: string; instruction: string }[]; usage: Usage };

@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { BRIEF_SYSTEM, GENERATE_SYSTEM, SUGGEST_SYSTEM } from "./prompts.js";
+import { BRIEF_SYSTEM, GENERATE_SYSTEM, SUGGEST_SYSTEM, VARIATIONS_SYSTEM } from "./prompts.js";
 import type {
   ApiError,
   GenerateRequest,
@@ -9,6 +9,8 @@ import type {
   SuggestRequest,
   SuggestResponse,
   Usage,
+  VariationsRequest,
+  VariationsResponse,
 } from "./types.js";
 
 const MODEL = "claude-opus-5-5";
@@ -95,11 +97,13 @@ const suggestSchema = {
   },
 };
 
+// plan comes first so the model decides the archetype, navigation and signature before writing code.
 const generateSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["title", "summary", "code"],
+  required: ["plan", "title", "summary", "code"],
   properties: {
+    plan: { type: "string" },
     title: { type: "string" },
     summary: { type: "string" },
     code: { type: "string" },
@@ -183,8 +187,52 @@ export async function generate(req: GenerateRequest, onProgress?: (p: Progress) 
   });
   onProgress?.({ phase: "thinking", chars: 0 });
   const msg = await stream.finalMessage();
-  const out = jsonText(msg) as Omit<GenerateResponse, "usage">;
+  const { plan: _plan, ...out } = jsonText(msg) as Omit<GenerateResponse, "usage"> & { plan: string };
   return { ...out, usage: usageOf(msg) };
+}
+
+const variationsSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["variations"],
+  properties: {
+    variations: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "instruction"],
+        properties: { name: { type: "string" }, instruction: { type: "string" } },
+      },
+    },
+  },
+};
+
+/** Plans which states and scenarios of a screen are worth designing. */
+export async function planVariations(req: VariationsRequest): Promise<VariationsResponse> {
+  if (!req.code) throw new HttpError(400, { error: "Generate the screen first.", code: "bad_request" });
+  const msg = await client().beta.messages.create({
+    model: MODEL,
+    max_tokens: 3000,
+    system: VARIATIONS_SYSTEM,
+    output_config: { effort: "low", format: { type: "json_schema", schema: variationsSchema } },
+    messages: [
+      {
+        role: "user",
+        content: [
+          `Project brief: ${req.brief || "(none)"}`,
+          `Screen: ${req.surfaceName} on ${req.device}`,
+          req.existing.length ? `Already exists: ${req.existing.join(", ")}` : "",
+          `Screen code:\n${req.code}`,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+      },
+    ],
+    ...FALLBACK,
+  });
+  const out = jsonText(msg) as Omit<VariationsResponse, "usage">;
+  return { variations: out.variations.slice(0, 6), usage: usageOf(msg) };
 }
 
 const briefSchema = {

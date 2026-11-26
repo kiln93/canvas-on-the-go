@@ -1,10 +1,11 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { runGenerate, runSuggest, setProgress, useProgress } from "../api";
+import { runGenerate, runSuggest, runVariations, setProgress, useProgress } from "../api";
 import { frameHtml } from "../runtime/frameHtml";
 import { addFrame, deleteFrame, DEVICES, getState, set, updateFrame, type Frame } from "../store";
 import { strokePath } from "./ink";
 import { FrameBeam, FrameMosaic, FrameStatus, RevealWave } from "./FrameLoader";
 import { NoteCard } from "./NoteCard";
+import { registerFrame } from "./pick";
 
 export const FrameView = memo(function FrameView(props: {
   frame: Frame;
@@ -23,7 +24,7 @@ export const FrameView = memo(function FrameView(props: {
   const progress = useProgress(f.id);
 
   // A live screen takes a moment to boot in its iframe; it says when it has drawn (or failed).
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [ready, setReady] = useState(false);
   useEffect(() => {
     setReady(false);
@@ -41,7 +42,7 @@ export const FrameView = memo(function FrameView(props: {
   const revealing = progress?.phase === "rendering" && ready;
   const loadingScreen = !!f.code && !ready && !f.busy;
   const statusPhase = f.busy
-    ? (progress?.phase ?? (f.busy === "suggesting" ? "reading" : "thinking"))
+    ? (progress?.phase ?? (f.busy === "suggesting" ? "reading" : f.busy === "planning" ? "planning" : "thinking"))
     : loadingScreen || (progress?.phase === "rendering" && !ready)
       ? progress?.phase === "rendering"
         ? "rendering"
@@ -66,7 +67,10 @@ export const FrameView = memo(function FrameView(props: {
         </div>
         {f.code && (
           <iframe
-            ref={iframeRef}
+            ref={(el) => {
+              iframeRef.current = el;
+              registerFrame(f.id, el);
+            }}
             title={f.name || "frame"}
             srcDoc={html}
             sandbox="allow-scripts"
@@ -82,9 +86,9 @@ export const FrameView = memo(function FrameView(props: {
             ))}
           </svg>
         )}
-        {!f.code &&
+        {!f.busy &&
           f.notes
-            .filter((n) => n.status !== "dismissed" && n.region)
+            .filter((n) => (n.status === "pending" || n.status === "accepted") && n.region)
             .map((n, i) => (
               <div
                 key={n.id}
@@ -106,7 +110,7 @@ export const FrameView = memo(function FrameView(props: {
           </RevealWave>
         )}
         {statusPhase && (
-          <div className={`frame-busy ${f.busy === "suggesting" ? "light" : ""}`}>
+          <div className={`frame-busy ${f.busy === "suggesting" || f.busy === "planning" ? "light" : ""}`}>
             <FrameStatus phase={statusPhase} progress={progress} scale={Math.min(ui, 2.5)} />
           </div>
         )}
@@ -118,6 +122,13 @@ export const FrameView = memo(function FrameView(props: {
         className="frame-actions"
         style={{ left: f.x, top: f.y + f.h + 12 * ui, transform: `scale(${ui})` }}
       >
+        <button
+          className="btn"
+          onClick={() => window.dispatchEvent(new CustomEvent("cotg:focus", { detail: f.id }))}
+          title="Zoom in and pick up the pen"
+        >
+          ✎ {f.code ? "Mark up" : "Draw"}
+        </button>
         {!f.code && (
           <button className="btn ink" disabled={!!f.busy || !sketch.length} onClick={() => runSuggest(f.id)} title="Done sketching">
             ✓ Done sketching
@@ -156,6 +167,11 @@ export const FrameView = memo(function FrameView(props: {
         {inSurface && f.code && (
           <button className="btn" onClick={() => setVariationOpen((v) => !v)}>
             + Variation
+          </button>
+        )}
+        {inSurface && f.primary && f.code && (
+          <button className="btn ghost" disabled={!!f.busy} onClick={() => runVariations(f.id)} title="Ask for more states and edge cases">
+            Suggest more states
           </button>
         )}
         {f.versions.length > 1 && (

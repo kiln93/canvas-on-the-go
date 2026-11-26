@@ -7,14 +7,16 @@ import type {
   ImportResponse,
   SuggestRequest,
   SuggestResponse,
+  VariationsRequest,
+  VariationsResponse,
 } from "../server/types";
 import { rasterize } from "./canvas/ink";
 import { useSyncExternalStore } from "react";
-import { addSpend, DEVICES, getState, updateFrame, type Frame } from "./store";
+import { addFrame, addSpend, DEVICES, getState, NOTE_TAGS, updateFrame, type Frame } from "./store";
 
 // Live progress for frames that are busy. Kept out of the saved project: it's only true right now.
 export type FrameProgress = {
-  phase: "reading" | "thinking" | "writing" | "rendering";
+  phase: "reading" | "planning" | "thinking" | "writing" | "rendering";
   startedAt: number;
   /** 0..1 when there is a real measure of how far along it is. */
   fraction?: number;
@@ -150,7 +152,15 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
   if (overCap()) return updateFrame(id, { error: CAP_MSG });
   const previousCode = baseCode ?? f.code;
   const image = rasterize(f, previousCode && f.code ? "markup" : "sketch");
-  const notes = f.notes.filter((n) => n.status === "accepted").map((n) => n.text);
+  const notes = f.notes
+    .filter((n) => n.status === "accepted")
+    .map((n) => {
+      const tag = NOTE_TAGS.find((t) => t.id === n.tag)?.label;
+      const where = n.region
+        ? ` (at ${Math.round(n.region.x * 100)}%,${Math.round(n.region.y * 100)}% of the frame, ${Math.round(n.region.w * 100)}%×${Math.round(n.region.h * 100)}%)`
+        : "";
+      return `${tag ? `[${tag}] ` : ""}${n.text}${where}`;
+    });
   if (!image && !notes.length && !instruction) {
     return updateFrame(id, { error: "Draw in the frame or add a note first." });
   }
@@ -190,7 +200,11 @@ export async function runGenerate(id: string, instruction?: string, baseCode?: s
         summary: out.summary,
         name: cur.name || out.title,
         approved: false,
-        showSketch: true,
+        showSketch: false, // the sketch did its job; "Show sketch" brings it back
+        // Notes that went into this build move to History, so the card only shows what's next.
+        notes: cur.notes.map((n) =>
+          n.status === "accepted" ? { ...n, status: "applied" as const, appliedAt: Date.now() } : n,
+        ),
         // Markups have been applied, so clear them; the sketch stays until you approve.
         strokes: cur.code ? cur.strokes.filter((s) => s.kind !== "markup") : cur.strokes,
         versions: [...cur.versions, { code: out.code, summary: out.summary, at: Date.now() }],
@@ -208,4 +222,58 @@ export async function importPrd(req: ImportRequest): Promise<ImportResponse> {
   const out = await post<ImportResponse>("/api/import", req);
   addSpend(out.usage);
   return out;
+}
+
+/**
+ * Asks Claude which states of a surface's screen are worth designing (empty, error, a product-specific
+ * edge case…), then builds each one as a variation frame beside the original.
+ */
+export async function runVariations(surfaceId: string) {
+  const primary = frame(surfaceId);
+  if (!primary?.code || primary.busy) return;
+  if (overCap()) return updateFrame(surfaceId, { error: CAP_MSG });
+  const siblings = getState().project.frames.filter((x) => x.surfaceId === surfaceId && x.id !== surfaceId);
+  updateFrame(surfaceId, { busy: "planning", error: undefined, variationsPlanned: true });
+  setProgress(surfaceId, { phase: "planning", startedAt: Date.now() });
+  let plan: VariationsResponse;
+  try {
+    const req: VariationsRequest = {
+      brief: getState().project.brief,
+      surfaceName: surfaceName(primary),
+      device: DEVICES[primary.device].label,
+      code: primary.code,
+      existing: siblings.map((x) => x.name).filter(Boolean),
+    };
+    plan = await post<VariationsResponse>("/api/variations", req);
+    addSpend(plan.usage);
+  } catch (e) {
+    setProgress(surfaceId, undefined);
+    return updateFrame(surfaceId, { busy: undefined, error: (e as Error).message });
+  }
+  setProgress(surfaceId, undefined);
+  updateFrame(surfaceId, { busy: undefined });
+
+  // Lay them out in rows of three to the right of the original, leaving room for note cards.
+  const all = getState().project.frames.filter((x) => x.surfaceId === surfaceId);
+  const startX = Math.max(...all.map((x) => x.x + x.w)) + 720;
+  const stepX = primary.w + 720;
+  const stepY = primary.h + 200;
+  const made = plan.variations.map((v, i) =>
+    addFrame({
+      name: v.name,
+      device: primary.device,
+      x: startX + (i % 3) * stepX,
+      y: primary.y + Math.floor(i / 3) * stepY,
+      w: primary.w,
+      h: primary.h,
+      surfaceId,
+    }),
+  );
+  window.dispatchEvent(new Event("cotg:fit-all")); // zoom out so every variation is in view
+  // Build a few at a time.
+  const queue = made.map((f, i) => () => runGenerate(f.id, `Make the "${plan.variations[i].name}" variation of this screen: ${plan.variations[i].instruction}`, primary.code));
+  const worker = async () => {
+    for (let job = queue.shift(); job; job = queue.shift()) await job();
+  };
+  await Promise.all([worker(), worker(), worker()]);
 }

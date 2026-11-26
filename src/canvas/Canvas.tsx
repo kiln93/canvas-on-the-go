@@ -1,3 +1,4 @@
+import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   addFrame,
@@ -18,14 +19,19 @@ import {
 } from "../store";
 import { FrameView } from "./FrameView";
 import { strokePath } from "./ink";
+import { NoteComposer, type NoteTarget } from "./NoteComposer";
+import { pickInFrame } from "./pick";
 
 export type Tool = "select" | "pen" | "eraser" | "frame";
 type Camera = { x: number; y: number; z: number };
 
 const cameras = new Map<string, Camera>(); // remembered per canvas (overview or a surface)
+const HOLD_MS = 500; // press and hold the pen this long, without moving, to leave a note
+const NEAR = 160; // world px: a stroke that starts this close to a frame still belongs to it
 
 type Gesture =
-  | { type: "draw"; frameId: string; points: Point[]; kind: Stroke["kind"] }
+  // frameId "" is a loose stroke on empty canvas (world coordinates); a frame is made around it.
+  | { type: "draw"; frameId: string; points: Point[]; kind: Stroke["kind"]; sx: number; sy: number; t0: number }
   | { type: "erase"; touched: boolean }
   | { type: "frame"; x0: number; y0: number; x1: number; y1: number }
   | { type: "move"; frameId: string; dx: number; dy: number; moved: boolean }
@@ -53,6 +59,83 @@ export function Canvas(props: {
   const touchTap = useRef<{ t: number; max: number; moved: boolean } | null>(null);
   const lastTap = useRef<{ t: number; id: string | null }>({ t: 0, id: null });
   const [live, setLive] = useState<Gesture>(null);
+  const [noteTarget, setNoteTarget] = useState<NoteTarget | null>(null);
+  const [pressAt, setPressAt] = useState<{ x: number; y: number } | null>(null);
+  const holdTimer = useRef<ReturnType<typeof setTimeout>>();
+  const flight = useRef<gsap.core.Tween>();
+
+  /** Glides the camera to a new position. */
+  const flyTo = (to: Camera) => {
+    flight.current?.kill();
+    const from = { ...camRef.current };
+    flight.current = gsap.to(from, { ...to, duration: 0.6, ease: "power3.inOut", onUpdate: () => setCam({ ...from }) });
+  };
+  /** Zooms so a frame (and its note card, when there's room) fills the screen, big enough to draw on. */
+  const focusFrame = (f: Frame) => {
+    const el = rootRef.current;
+    if (!el) return;
+    const W = el.clientWidth;
+    const H = el.clientHeight;
+    const top = 76; // below the top bar
+    const bottom = 170; // room for the frame's buttons above the toolbar
+    const withCard = W > 700;
+    const span = f.w + (withCard ? 32 + 320 : 0);
+    const z = clampZ(Math.min(1.6, (H - top - bottom) / f.h, (W - 48) / span));
+    setNoteTarget(null);
+    flyTo({ z, x: (W - span * z) / 2 - f.x * z, y: top - f.y * z });
+  };
+  // Zoom out to show every frame on this canvas (after variations are added).
+  useEffect(() => {
+    const fit = () => {
+      const el = rootRef.current;
+      const fs = framesOn(getState().project.frames, getState().surfaceId); // fresh: frames were just added
+      if (!el || !fs.length) return;
+      const x0 = Math.min(...fs.map((f) => f.x));
+      const y0 = Math.min(...fs.map((f) => f.y));
+      const x1 = Math.max(...fs.map((f) => f.x + f.w));
+      const y1 = Math.max(...fs.map((f) => f.y + f.h));
+      const W = el.clientWidth;
+      const H = el.clientHeight;
+      const z = clampZ(Math.min(1, (W - 96) / (x1 - x0), (H - 76 - 140) / (y1 - y0)));
+      flyTo({ z, x: (W - (x1 - x0) * z) / 2 - x0 * z, y: 76 + 24 - y0 * z });
+    };
+    // "Draw" on a frame: zoom in so it fills the screen.
+    const focus = (e: Event) => {
+      const f = getState().project.frames.find((x) => x.id === (e as CustomEvent<string>).detail);
+      if (f) focusFrame(f);
+    };
+    window.addEventListener("cotg:fit-all", fit);
+    window.addEventListener("cotg:focus", focus);
+    return () => {
+      window.removeEventListener("cotg:fit-all", fit);
+      window.removeEventListener("cotg:focus", focus);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const cancelHold = () => {
+    clearTimeout(holdTimer.current);
+    setPressAt(null);
+  };
+
+  /** Opens a note at a point in a frame: on a live screen, on the component there; on a sketch, on the strokes there. */
+  async function startNote(f: Frame, lx: number, ly: number) {
+    let target: NoteTarget = { frameId: f.id, box: { x: lx - 70, y: ly - 45, w: 140, h: 90 } };
+    if (f.code) {
+      const hit = await pickInFrame(f.id, lx, ly);
+      if (hit && hit.w > 0) target = { frameId: f.id, box: { x: hit.x, y: hit.y, w: hit.w, h: hit.h }, label: hit.label };
+    } else {
+      const near = f.strokes.filter((s) => s.kind === "sketch" && s.points.some(([x, y]) => Math.hypot(x - lx, y - ly) < 40));
+      if (near.length) {
+        const xs = near.flatMap((s) => s.points.map((p) => p[0]));
+        const ys = near.flatMap((s) => s.points.map((p) => p[1]));
+        const x0 = Math.min(...xs) - 8;
+        const y0 = Math.min(...ys) - 8;
+        target = { frameId: f.id, box: { x: x0, y: y0, w: Math.max(...xs) + 8 - x0, h: Math.max(...ys) + 8 - y0 } };
+      }
+    }
+    set({ selectedId: f.id });
+    setNoteTarget(target);
+  }
 
   // Switch camera when moving between the overview and a surface.
   useEffect(() => {
@@ -107,10 +190,38 @@ export function Canvas(props: {
     const hit = frameAt(w.x, w.y);
 
     if (tool === "pen") {
-      if (!hit) return;
-      const kind = hit.code ? "markup" : "sketch";
-      gesture.current = { type: "draw", frameId: hit.id, kind, points: [[w.x - hit.x, w.y - hit.y, e.pressure]] };
-      set({ selectedId: hit.id });
+      setNoteTarget(null);
+      // Draw freely: a stroke near a frame belongs to it, even past its edge; on empty canvas it starts a new frame.
+      const owner =
+        hit ??
+        frames.find(
+          (f) => w.x > f.x - NEAR && w.x < f.x + f.w + NEAR && w.y > f.y - NEAR && w.y < f.y + f.h + NEAR,
+        );
+      const kind = owner?.code ? "markup" : "sketch";
+      const origin = owner ?? { x: 0, y: 0 };
+      gesture.current = {
+        type: "draw",
+        frameId: owner?.id ?? "",
+        kind,
+        points: [[w.x - origin.x, w.y - origin.y, e.pressure]],
+        sx: e.clientX,
+        sy: e.clientY,
+        t0: Date.now(),
+      };
+      if (owner) set({ selectedId: owner.id });
+      // Press and hold on a frame to leave a note there instead of drawing.
+      if (hit) {
+        clearTimeout(holdTimer.current);
+        setPressAt({ x: w.x, y: w.y });
+        holdTimer.current = setTimeout(() => {
+          const g = gesture.current;
+          if (g?.type !== "draw" || g.frameId !== hit.id) return;
+          gesture.current = null;
+          setLive(null);
+          setPressAt(null);
+          startNote(hit, w.x - hit.x, w.y - hit.y);
+        }, HOLD_MS);
+      }
     } else if (tool === "eraser") {
       gesture.current = { type: "erase", touched: false };
       eraseAt(w.x, w.y);
@@ -181,7 +292,8 @@ export function Canvas(props: {
     }
     const w = toWorld(e.clientX, e.clientY);
     if (g.type === "draw") {
-      const f = frames.find((x) => x.id === g.frameId)!;
+      if (Math.hypot(e.clientX - g.sx, e.clientY - g.sy) > 8) cancelHold();
+      const f = frames.find((x) => x.id === g.frameId) ?? { x: 0, y: 0 };
       const events = (e.nativeEvent as PointerEvent).getCoalescedEvents?.() ?? [e.nativeEvent];
       for (const ev of events) {
         const cw = toWorld(ev.clientX, ev.clientY);
@@ -231,14 +343,27 @@ export function Canvas(props: {
     }
     if (pointers.current.size > 0 && (g?.type === "pan" || g?.type === "pinch")) return;
 
+    cancelHold();
     if (g?.type === "draw" && g.points.length > 1) {
-      const stroke: Stroke = { id: uid(), points: g.points, kind: g.kind };
-      updateFrame(g.frameId, (f) => ({ strokes: [...f.strokes, stroke] }), true);
+      if (g.frameId) {
+        const stroke: Stroke = { id: uid(), points: g.points, kind: g.kind };
+        updateFrame(g.frameId, (f) => ({ strokes: [...f.strokes, stroke] }), true);
+      } else frameAroundStroke(g.points);
     } else if (g?.type === "frame") {
       createFrame(g);
     }
     gesture.current = null;
     setLive(null);
+  }
+
+  /** A stroke drawn on empty canvas gets a new frame of the chosen device, placed around where it started. */
+  function frameAroundStroke(points: Point[]) {
+    const spec = DEVICES[device];
+    const [sx, sy] = points[0];
+    const f = addFrame({ name: "", device, x: sx - 48, y: sy - 48, w: spec.w, h: spec.h, surfaceId: surfaceId ?? undefined });
+    const stroke: Stroke = { id: uid(), points: points.map(([x, y, p]) => [x - f.x, y - f.y, p]), kind: "sketch" };
+    updateFrame(f.id, { strokes: [stroke] });
+    set({ selectedId: f.id });
   }
 
   function createFrame(g: Extract<Gesture, { type: "frame" }>) {
@@ -266,6 +391,7 @@ export function Canvas(props: {
       surfaceId: surfaceId ?? undefined,
     });
     set({ selectedId: f.id });
+    focusFrame(f); // zoom in so the new frame is big enough to draw on
   }
 
   // Mouse and trackpad: scroll pans, pinch or ctrl+scroll zooms.
@@ -330,6 +456,24 @@ export function Canvas(props: {
             onPlay={() => props.onPlay(f.id)}
           />
         ))}
+        {live?.type === "draw" && !live.frameId && (
+          <svg className="live-ink" style={{ left: 0, top: 0, width: 1, height: 1 }}>
+            <path d={strokePath({ id: "live", points: live.points, kind: "sketch" })} fill="var(--ink)" />
+          </svg>
+        )}
+        {pressAt && <div className="press-ring" style={{ left: pressAt.x, top: pressAt.y }} />}
+        {noteTarget &&
+          (() => {
+            const f = frames.find((x) => x.id === noteTarget.frameId);
+            return f ? (
+              <NoteComposer
+                frame={f}
+                target={noteTarget}
+                scale={1 / Math.max(cam.z, 0.35)}
+                onClose={() => setNoteTarget(null)}
+              />
+            ) : null;
+          })()}
         {liveFrame && live?.type === "draw" && (
           <svg
             className="live-ink"
