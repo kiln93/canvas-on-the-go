@@ -1,8 +1,9 @@
-import { memo, useMemo, useState } from "react";
-import { runGenerate, runSuggest } from "../api";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { runGenerate, runSuggest, setProgress, useProgress } from "../api";
 import { frameHtml } from "../runtime/frameHtml";
 import { addFrame, deleteFrame, DEVICES, getState, set, updateFrame, type Frame } from "../store";
 import { strokePath } from "./ink";
+import { FrameBeam, FrameMosaic, FrameStatus, RevealWave } from "./FrameLoader";
 import { NoteCard } from "./NoteCard";
 
 export const FrameView = memo(function FrameView(props: {
@@ -19,6 +20,41 @@ export const FrameView = memo(function FrameView(props: {
   const hasNotes = f.notes.some((n) => n.status !== "dismissed");
   const [variationOpen, setVariationOpen] = useState(false);
   const ui = 1 / Math.max(props.zoom, 0.35); // keep controls readable when zoomed out
+  const progress = useProgress(f.id);
+
+  // A live screen takes a moment to boot in its iframe; it says when it has drawn (or failed).
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    setReady(false);
+    if (!html) return;
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== iframeRef.current?.contentWindow) return;
+      if (e.data?.type === "frame-ready" || e.data?.type === "frame-error") setReady(true);
+    };
+    window.addEventListener("message", onMessage);
+    const fallback = setTimeout(() => setReady(true), 20000); // never hide a screen behind a loader for good
+    return () => (window.removeEventListener("message", onMessage), clearTimeout(fallback));
+  }, [html]);
+
+  // A screen that just finished generating gets the reveal wave once it has drawn.
+  const revealing = progress?.phase === "rendering" && ready;
+  const loadingScreen = !!f.code && !ready && !f.busy;
+  const statusPhase = f.busy
+    ? (progress?.phase ?? (f.busy === "suggesting" ? "reading" : "thinking"))
+    : loadingScreen || (progress?.phase === "rendering" && !ready)
+      ? progress?.phase === "rendering"
+        ? "rendering"
+        : "loading"
+      : null;
+  const sketchLayer = (ghost: boolean) =>
+    sketch.length > 0 && (
+      <svg className={`ink-layer ${ghost ? "ghost" : ""}`} width={f.w} height={f.h}>
+        {sketch.map((s) => (
+          <path key={s.id} d={strokePath(s)} />
+        ))}
+      </svg>
+    );
 
   return (
     <>
@@ -28,14 +64,17 @@ export const FrameView = memo(function FrameView(props: {
           <span className="muted">{DEVICES[f.device].label}</span>
           {f.code && !f.approved && <span className="pill">Review</span>}
         </div>
-        {f.code && <iframe title={f.name || "frame"} srcDoc={html} sandbox="allow-scripts" className="frame-live" />}
-        {(!f.code || f.showSketch) && sketch.length > 0 && (
-          <svg className={`ink-layer ${f.code ? "ghost" : ""}`} width={f.w} height={f.h}>
-            {sketch.map((s) => (
-              <path key={s.id} d={strokePath(s)} />
-            ))}
-          </svg>
+        {f.code && (
+          <iframe
+            ref={iframeRef}
+            title={f.name || "frame"}
+            srcDoc={html}
+            sandbox="allow-scripts"
+            className="frame-live"
+            style={{ opacity: ready && progress?.phase !== "rendering" ? 1 : revealing ? 1 : 0 }}
+          />
         )}
+        {(!f.code || f.showSketch) && !revealing && sketchLayer(!!f.code && ready)}
         {markups.length > 0 && (
           <svg className="ink-layer markup" width={f.w} height={f.h}>
             {markups.map((s) => (
@@ -60,13 +99,19 @@ export const FrameView = memo(function FrameView(props: {
                 <b>{i + 1}</b>
               </div>
             ))}
-        {f.busy && (
-          <div className="frame-busy">
-            <span className="spinner" />
-            {f.busy === "suggesting" ? "Reading your sketch…" : "Building the screen…"}
+        {f.busy === "generating" && progress?.phase === "writing" && <FrameMosaic w={f.w} h={f.h} />}
+        {revealing && (
+          <RevealWave onDone={() => setProgress(f.id, undefined)}>
+            <div className="frame-wave-view">{sketchLayer(false)}</div>
+          </RevealWave>
+        )}
+        {statusPhase && (
+          <div className={`frame-busy ${f.busy === "suggesting" ? "light" : ""}`}>
+            <FrameStatus phase={statusPhase} progress={progress} scale={Math.min(ui, 2.5)} />
           </div>
         )}
       </div>
+      {f.busy && <FrameBeam frame={f} />}
 
       <div
         data-ui

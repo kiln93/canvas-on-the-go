@@ -1,4 +1,5 @@
 import { useRef, useState, type CSSProperties } from "react";
+import { ThinkingOrb } from "thinking-orbs";
 import { runGenerate, runSuggest } from "../api";
 import { uid, updateFrame, type Frame, type NoteItem } from "../store";
 
@@ -29,8 +30,15 @@ export function NoteCard({ frame: f, style }: { frame: Frame; style: CSSProperti
         )}
       </div>
       {visible.length === 0 && (
-        <p className="muted small">
-          {f.busy ? "Reading your sketch…" : "Tap “Done sketching” and I'll suggest what each part is. You can also write or say notes below."}
+        <p className="muted small note-empty">
+          {f.busy ? (
+            <>
+              <ThinkingOrb state="searching" size={20} theme="light" color="#016a71" />
+              Reading your sketch…
+            </>
+          ) : (
+            "Tap “Done sketching” and I'll suggest what each part is. You can also write or say notes below."
+          )}
         </p>
       )}
       <ol className="notes">

@@ -21,7 +21,9 @@ function apiDevServer(): Plugin {
           const response: Response = await mod.POST(request);
           res.statusCode = response.status;
           response.headers.forEach((v, k) => res.setHeader(k, v));
-          res.end(Buffer.from(await response.arrayBuffer()));
+          // Pass streamed bodies through as they arrive, like Vercel does.
+          if (response.body) for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) res.write(chunk);
+          res.end();
         } catch (err) {
           next(err);
         }

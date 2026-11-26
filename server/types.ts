@@ -44,3 +44,9 @@ export type ImportRequest =
   | { kind: "text"; text: string; name?: string };
 
 export type ImportResponse = { title: string; brief: string; usage: Usage };
+
+// /api/generate streams one JSON object per line.
+export type GenerateStreamLine =
+  | { type: "progress"; phase: "thinking" | "writing"; chars: number }
+  | { type: "done"; result: GenerateResponse }
+  | ({ type: "error" } & ApiError);

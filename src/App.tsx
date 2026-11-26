@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ThinkingOrb } from "thinking-orbs";
 import { importPrd } from "./api";
 import { Canvas, type Tool } from "./canvas/Canvas";
 import { frameHtml } from "./runtime/frameHtml";
@@ -308,7 +309,7 @@ function BriefDialog(props: { initial: string; onSave: (b: string) => void; onCa
         </div>
         {status.msg && (
           <p className={`small import-status ${status.error ? "error" : ""}`}>
-            {status.busy && <span className="spinner" />} {status.msg}
+            {status.busy && <ThinkingOrb state="searching" size={20} theme="light" color="#016a71" />} {status.msg}
           </p>
         )}
         <textarea
